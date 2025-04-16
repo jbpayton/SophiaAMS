@@ -1,27 +1,15 @@
 import os
 from dotenv import load_dotenv
-from openai import OpenAI
 from VectorKnowledgeGraph import VectorKnowledgeGraph
-from LLMTripleExtractor import LLMTripleExtractor
+from triple_extraction import extract_triples_from_string
+import time
 
 def main():
     # Load environment variables
     load_dotenv()
 
-    # Initialize the LLM client
-    client = OpenAI(
-        api_key=os.getenv('LOCAL_TEXTGEN_API_KEY'),
-        base_url=os.getenv('LOCAL_TEXTGEN_API_BASE')
-    )
-
-    # Create the triple extractor
-    triple_extractor = LLMTripleExtractor(client)
-
     # Create the knowledge graph
-    kgraph = VectorKnowledgeGraph(
-        triple_extractor=triple_extractor,
-        path="Test_GraphStoreMemory"
-    )
+    kgraph = VectorKnowledgeGraph(path="Test_GraphStoreMemory")
 
     # Example text to process
     text = """Rachel is a young vampire girl with pale skin, long blond hair tied into two pigtails with black 
@@ -29,8 +17,31 @@ def main():
     a red bat symbol design cross from the front to the back on her dress, another red cross on her shawl and bottom 
     half, black pointy heel boots with a red cross, and a red ribbon on her right ankle."""
 
-    # Process the text
-    kgraph.process_text(text, metadata={"reference": "https://example.com/rachel"})
+    # Extract triples using the new extractor
+    result = extract_triples_from_string(text)
+    
+    # Convert the new format to the old format for compatibility
+    triples = []
+    metadata_list = []
+    for triple_data in result["triples"]:
+        subject = triple_data["subject"]["text"]
+        relationship = triple_data["verb"]["text"]
+        obj = triple_data["object"]["text"]
+        triples.append((subject, relationship, obj))
+        
+        # Create metadata from properties
+        meta = {
+            "reference": "https://example.com/rachel",
+            "timestamp": time.time(),
+            "subject_properties": triple_data["subject"]["properties"],
+            "verb_properties": triple_data["verb"]["properties"],
+            "object_properties": triple_data["object"]["properties"],
+            "source_text": triple_data["source_text"]
+        }
+        metadata_list.append(meta)
+
+    # Add triples to the knowledge graph
+    kgraph.add_triples(triples, metadata_list)
 
     # Query the graph
     query = "Rachel"
