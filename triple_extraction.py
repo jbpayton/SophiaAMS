@@ -1,33 +1,46 @@
+import os
 import json
+import time
+from typing import Dict, List, Optional, Union
 from openai import OpenAI
+from dotenv import load_dotenv
 from prompts import TRIPLE_EXTRACTION_PROMPT
 from schemas import TRIPLE_EXTRACTION_SCHEMA
 
-def extract_triples_from_string(input_text, output_file=None):
+# Load environment variables
+load_dotenv()
+
+def extract_triples_from_string(
+    text: str, 
+    source: Optional[str] = None,
+    timestamp: Optional[float] = None,
+    is_query: bool = False
+) -> Dict:
     """
-    Extract semantic triples from a text string using QwQ-32B via LM Studio
+    Extract semantic triples from a text string.
     
     Args:
-        input_text (str): Text string to analyze
-        output_file (str, optional): Path to save the output JSON. If None, returns the result.
-    
+        text: Input text to extract triples from
+        source: Optional source identifier for the text
+        timestamp: Optional timestamp for when the information was received
+        is_query: Whether this is a query (affects how we process the results)
+        
     Returns:
-        dict: Extracted triples in JSON format
+        Dict containing extracted triples and metadata
     """
-    # Set up the QwQ-32B model via LM Studio
     client = OpenAI(
-        base_url="http://192.168.2.94:1234/v1",  # LM Studio server URL
-        api_key="not-needed",  # Not required for LM Studio
+        base_url=os.getenv('LLM_API_BASE'),
+        api_key=os.getenv('LLM_API_KEY'),
     )
     
-    # Format prompt with input text
-    prompt = TRIPLE_EXTRACTION_PROMPT.format(text=input_text)
+    # Prepare the prompt with the input text
+    prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text)
     
-    # Call the model with the prompt
+    # Call the LLM
     response = client.chat.completions.create(
-        model="QwQ-32B",
+        model=os.getenv('EXTRACTION_MODEL', 'QwQ-32B'),
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
+        temperature=0.0,
         response_format={
             "type": "json_schema",
             "json_schema": {
@@ -35,17 +48,37 @@ def extract_triples_from_string(input_text, output_file=None):
             }
         }
     )
-
-    # Parse the JSON response
-    result = json.loads(response.choices[0].message.content)
     
-    # Save the result if an output file is specified
-    if output_file:
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(result, f, indent=2)
-        print(f"Results saved to {output_file}")
-    
-    return result
+    # Parse the response
+    try:
+        result = json.loads(response.choices[0].message.content)
+        timestamp = timestamp or time.time()
+        
+        # For queries, we want to return the extracted triples directly
+        if is_query:
+            return {
+                "query_triples": result["triples"],
+                "timestamp": timestamp,
+                "text": text
+            }
+        
+        # For regular extraction, return with metadata
+        return {
+            "triples": result["triples"],
+            "source": source,
+            "timestamp": timestamp,
+            "text": text
+        }
+    except Exception as e:
+        print(f"Error parsing response: {e}")
+        print(f"Raw response: {response.choices[0].message.content}")
+        return {
+            "triples": [],
+            "source": source,
+            "timestamp": timestamp or time.time(),
+            "text": text,
+            "error": str(e)
+        }
 
 if __name__ == "__main__":
     # Example usage

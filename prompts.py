@@ -90,3 +90,26 @@ Output as JSON following this exact structure:
 
 Text to analyze:
 {text}"""
+
+QUERY_EXTRACTION_PROMPT = """Please extract semantic triples from the following natural language query. The goal is to understand what information the user is looking for.
+
+Guidelines:
+1. Convert first-person statements (I, me, my) to use "user" as the subject
+2. Convert questions into statement form
+3. Extract the core relationship being expressed
+4. Keep the original query text in the source_text field
+
+Output format:
+{{
+    "triples": [
+        {{
+            "subject": {{"text": "subject_text", "properties": {{}}}},
+            "verb": {{"text": "verb_text", "properties": {{}}}},
+            "object": {{"text": "object_text", "properties": {{}}}},
+            "source_text": "original_query_text"
+        }}
+    ]
+}}
+
+Query to analyze:
+{text}"""
