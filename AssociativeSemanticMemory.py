@@ -235,7 +235,7 @@ Please write a paragraph that incorporates all this information in a natural way
         )
         
         response = client.chat.completions.create(
-            model=os.getenv('SUMMARIZATION_MODEL', 'QwQ-32B'),
+            model=os.getenv('SUMMARIZATION_MODEL', 'gemma-3-4b-it-qat'),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7
         )

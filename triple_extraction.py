@@ -38,7 +38,7 @@ def extract_triples_from_string(
     
     # Call the LLM
     response = client.chat.completions.create(
-        model=os.getenv('EXTRACTION_MODEL', 'QwQ-32B'),
+        model=os.getenv('EXTRACTION_MODEL', 'gemma-3-4b-it-qat'),
         messages=[{"role": "user", "content": prompt}],
         temperature=0.0,
         response_format={

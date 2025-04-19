@@ -36,7 +36,7 @@ def summarize_messages(client, messages, start_index, end_index):
 
     # Send the summarization prompt to the OpenAI API
     response = client.chat.completions.create(
-        model=os.getenv('SUMMARY_MODEL', 'QwQ-32B'),
+        model=os.getenv('SUMMARY_MODEL', 'gemma-3-4b-it-qat'),
         messages=[{"role": "user", "content": summary_prompt}],
         temperature=0.5,
         max_tokens=150,
@@ -62,7 +62,7 @@ def summarize_verbose(client, input_string, start_index, end_index):
 
     # Send the summarization prompt to the OpenAI API
     response = client.chat.completions.create(
-        model=os.getenv('VERBOSE_SUMMARY_MODEL', 'QwQ-32B'),
+        model=os.getenv('VERBOSE_SUMMARY_MODEL', 'gemma-3-4b-it-qat'),
         messages=[{"role": "user", "content": summary_prompt}],
         temperature=0.0,
         max_tokens=1000,
@@ -104,7 +104,7 @@ class ContextSummarizers:
 Summary:"""
         
         response = self.client.chat.completions.create(
-            model=os.getenv('SUMMARY_MODEL', 'QwQ-32B'),
+            model=os.getenv('SUMMARY_MODEL', 'gemma-3-4b-it-qat'),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,  # Lower temperature for more focused summaries
         )
