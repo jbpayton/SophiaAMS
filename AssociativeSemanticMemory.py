@@ -8,10 +8,10 @@ import shutil
 import atexit
 from openai import OpenAI
 
-class IngestionPipeline:
+class AssociativeSemanticMemory:
     def __init__(self, kgraph: VectorKnowledgeGraph):
         """
-        Initialize the ingestion pipeline.
+        Initialize the associative semantic memory system.
         
         Args:
             kgraph: VectorKnowledgeGraph instance for storing triples
@@ -19,9 +19,19 @@ class IngestionPipeline:
         self.kgraph = kgraph
         self.summarizer = ContextSummarizers()  # No longer passing kgraph
 
+    def close(self):
+        """Close the knowledge graph connection and release resources."""
+        if hasattr(self, 'kgraph') and self.kgraph:
+            try:
+                # Close the Qdrant client if it exists
+                if hasattr(self.kgraph, 'qdrant_client'):
+                    self.kgraph.qdrant_client.close()
+            except Exception as e:
+                print(f"Warning: Could not close Qdrant client: {e}")
+
     def ingest_text(self, text: str, source: str = "unknown", timestamp: Optional[float] = None) -> Dict:
         """
-        Process text through the ingestion pipeline:
+        Process text through the associative semantic memory system:
         1. Generate summary
         2. Extract triples from original text
         3. Extract triples from summary
@@ -236,36 +246,44 @@ def cleanup_test_directory():
     """Clean up the test directory, ensuring all resources are released first."""
     try:
         # Remove the test directory
-        if os.path.exists("Test_IngestionPipeline"):
+        if os.path.exists("Test_AssociativeMemory"):
             # First try to remove the SQLite file directly
-            sqlite_path = os.path.join("Test_IngestionPipeline", "qdrant_data", "collection", "knowledge_graph", "storage.sqlite")
+            sqlite_path = os.path.join("Test_AssociativeMemory", "qdrant_data", "collection", "knowledge_graph", "storage.sqlite")
             if os.path.exists(sqlite_path):
                 try:
+                    # Wait a moment to ensure all connections are closed
+                    time.sleep(1)
                     os.remove(sqlite_path)
                 except PermissionError:
                     print("Warning: Could not remove SQLite file, it may be in use")
+                except Exception as e:
+                    print(f"Warning: Error removing SQLite file: {e}")
             
             # Then try to remove the directory
             try:
-                shutil.rmtree("Test_IngestionPipeline")
+                # Wait a moment to ensure all connections are closed
+                time.sleep(1)
+                shutil.rmtree("Test_AssociativeMemory")
             except PermissionError:
                 print("Warning: Could not remove test directory, some files may be in use")
+            except Exception as e:
+                print(f"Warning: Error removing test directory: {e}")
     except Exception as e:
         print(f"Warning: Could not clean up test directory: {e}")
 
 if __name__ == "__main__":
-    # Test the ingestion pipeline
-    print("Testing IngestionPipeline...")
+    # Test the associative semantic memory
+    print("Testing AssociativeSemanticMemory...")
     
     # Create a test knowledge graph
-    kgraph = VectorKnowledgeGraph(path="Test_IngestionPipeline")
+    kgraph = VectorKnowledgeGraph(path="Test_AssociativeMemory")
     
     # Register cleanup function
     atexit.register(cleanup_test_directory)
     
     try:
-        # Initialize pipeline
-        pipeline = IngestionPipeline(kgraph)
+        # Initialize memory system
+        memory = AssociativeSemanticMemory(kgraph)
         
         # Test text
         test_text = """
@@ -275,9 +293,9 @@ if __name__ == "__main__":
         voice is provided by the Japanese voice actress Saki Fujita (藤田咲, Fujita Saki)
         """
         
-        # Process text through pipeline
+        # Process text through memory system
         print("\nProcessing text...")
-        result = pipeline.ingest_text(test_text, source="VOCALOID Wiki")
+        result = memory.ingest_text(test_text, source="VOCALOID Wiki")
         
         # Print summary
         print("\nGenerated Summary:")
@@ -288,7 +306,7 @@ if __name__ == "__main__":
         
         # Test 1: Simple statement
         print("\nQuery 1: 'I like Hatsune Miku'")
-        related = pipeline.query_related_information("I like Hatsune Miku")
+        related = memory.query_related_information("I like Hatsune Miku")
         print("\nRelated information:")
         for triple, metadata in related:
             print(f"\nTriple: {triple}")
@@ -304,11 +322,11 @@ if __name__ == "__main__":
         
         # Print summary of results
         print("\nSummary of retrieved information:")
-        print(pipeline.summarize_results(related))
+        print(memory.summarize_results(related))
         
         # Test 2: Question format
         print("\nQuery 2: 'Tell me about Miku's voice'")
-        related = pipeline.query_related_information("Tell me about Miku's voice")
+        related = memory.query_related_information("Tell me about Miku's voice")
         print("\nRelated information:")
         for triple, metadata in related:
             print(f"\nTriple: {triple}")
@@ -324,11 +342,11 @@ if __name__ == "__main__":
         
         # Print summary of results
         print("\nSummary of retrieved information:")
-        print(pipeline.summarize_results(related))
+        print(memory.summarize_results(related))
         
         # Test 3: Excluding summary triples
         print("\nQuery 3: 'Who developed Miku?' (excluding summary triples)")
-        related_no_summary = pipeline.query_related_information("Who developed Miku?", include_summary_triples=False)
+        related_no_summary = memory.query_related_information("Who developed Miku?", include_summary_triples=False)
         print("\nRelated information (original only):")
         for triple, metadata in related_no_summary:
             print(f"\nTriple: {triple}")
@@ -343,8 +361,14 @@ if __name__ == "__main__":
         
         # Print summary of results
         print("\nSummary of retrieved information:")
-        print(pipeline.summarize_results(related_no_summary))
+        print(memory.summarize_results(related_no_summary))
     
     finally:
+        # Close the memory system and knowledge graph connection
+        if 'memory' in locals():
+            try:
+                memory.close()
+            except Exception as e:
+                print(f"Warning: Error closing memory system: {e}")
         # Ensure cleanup happens
         cleanup_test_directory() 
