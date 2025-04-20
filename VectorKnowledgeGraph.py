@@ -13,6 +13,8 @@ import networkx as nx
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from typing import List, Tuple, Dict, Any
+import logging
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -27,28 +29,35 @@ class VectorKnowledgeGraph:
             embedding_dim: Optional embedding dimension
             path: Path to store graph data
         """
+        logging.debug(f"Initializing VectorKnowledgeGraph with path: {path}")
         if embedding_model is None:
+            logging.debug("Using default embedding model")
             self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2'))
             self.embedding_dim = int(os.getenv('EMBEDDING_DIM', 384))
         else:
+            logging.debug("Using provided embedding model")
             self.embedding_model = embedding_model
             self.embedding_dim = embedding_dim
 
         # Ensure the directory exists
         self.save_path = path
         os.makedirs(path, exist_ok=True)
+        logging.debug(f"Created/verified directory: {path}")
         
         # Initialize Qdrant client with local storage
+        logging.debug("Initializing Qdrant client")
         self.qdrant_client = QdrantClient(path=os.path.join(path, "qdrant_data"))
         
         # Define collection with named vectors
         self.collection_name = os.getenv('QDRANT_COLLECTION_NAME', 'knowledge_graph')
+        logging.debug(f"Using collection name: {self.collection_name}")
         
         # Create collection if it doesn't exist
         collections = self.qdrant_client.get_collections().collections
         collection_names = [collection.name for collection in collections]
         
         if self.collection_name not in collection_names:
+            logging.info(f"Creating new collection: {self.collection_name}")
             self.qdrant_client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config={
@@ -57,6 +66,9 @@ class VectorKnowledgeGraph:
                     "object": VectorParams(size=self.embedding_dim, distance=Distance.COSINE)
                 }
             )
+            logging.info("Collection created successfully")
+        else:
+            logging.debug("Collection already exists")
 
     def add_triples(self, triples: List[Tuple[str, str, str]], metadata: List[Dict[str, Any]] = None):
         """
@@ -66,16 +78,21 @@ class VectorKnowledgeGraph:
             triples: List of (subject, relationship, object) tuples
             metadata: Optional list of metadata dictionaries for each triple
         """
+        logging.info(f"Adding {len(triples)} triples to knowledge graph")
         if metadata is None:
             metadata = [{} for _ in triples]
+            logging.debug("No metadata provided, using empty metadata")
 
         # Generate embeddings for each component
+        logging.debug("Generating embeddings for triples")
         subjects, relationships, objects = zip(*triples)
         subject_embeddings = self.embedding_model.encode(subjects)
         relationship_embeddings = self.embedding_model.encode(relationships)
         object_embeddings = self.embedding_model.encode(objects)
+        logging.debug("Embeddings generated successfully")
         
         # Prepare points for Qdrant insertion
+        logging.debug("Preparing points for Qdrant insertion")
         points = []
         for i, (triple, s_emb, r_emb, o_emb, meta) in enumerate(zip(triples, subject_embeddings, relationship_embeddings, object_embeddings, metadata)):
             subject, relationship, obj = triple
@@ -96,23 +113,31 @@ class VectorKnowledgeGraph:
 
         if points:
             # Insert into Qdrant
+            logging.debug("Inserting points into Qdrant")
             self.qdrant_client.upsert(
                 collection_name=self.collection_name,
                 points=points
             )
+            logging.info(f"Successfully inserted {len(points)} points into Qdrant")
+        else:
+            logging.warning("No points to insert")
 
     def build_graph_from_subject_relationship(self, subject_relationship, similarity_threshold=0.8, max_results=20, metadata_query=None,
                                       return_metadata=False):
+        logging.debug(f"Building graph from subject-relationship with threshold: {similarity_threshold}")
         # Check if collection is empty
         collection_info = self.qdrant_client.get_collection(self.collection_name)
         if collection_info.points_count == 0:
+            logging.warning("Collection is empty")
             return []
 
         subject, verb = subject_relationship
+        logging.debug(f"Generating embeddings for subject: {subject} and verb: {verb}")
         subject_embedding = self.embedding_model.encode([subject])[0]
         verb_embedding = self.embedding_model.encode([verb])[0]
         
         # Search for subject matches
+        logging.debug("Searching for subject matches")
         subject_results = self.qdrant_client.search(
             collection_name=self.collection_name,
             query_vector=("subject", subject_embedding.tolist()),
@@ -122,6 +147,7 @@ class VectorKnowledgeGraph:
         )
         
         # Search for verb matches
+        logging.debug("Searching for verb matches")
         verb_results = self.qdrant_client.search(
             collection_name=self.collection_name,
             query_vector=("relationship", verb_embedding.tolist()),
@@ -137,6 +163,7 @@ class VectorKnowledgeGraph:
         subject_triple_ids = {hit.id for hit in subject_results}
         verb_triple_ids = {hit.id for hit in verb_results}
         common_triple_ids = subject_triple_ids.intersection(verb_triple_ids)
+        logging.debug(f"Found {len(common_triple_ids)} common triples")
 
         # Collect matching triples
         for hit in subject_results:
@@ -150,6 +177,7 @@ class VectorKnowledgeGraph:
                     if return_metadata:
                         collected_metadata.append(payload.get("metadata"))
 
+        logging.info(f"Found {len(collected_triples)} matching triples")
         if return_metadata:
             return list(zip(collected_triples, collected_metadata))
         else:
@@ -162,6 +190,7 @@ class VectorKnowledgeGraph:
         Args:
             metadata_criteria: Dictionary of metadata fields and values to match
         """
+        logging.info(f"Querying triples with metadata criteria: {metadata_criteria}")
         # Build filter condition
         filter_conditions = []
         for key, value in metadata_criteria.items():
@@ -177,6 +206,7 @@ class VectorKnowledgeGraph:
         )
         
         # Query Qdrant
+        logging.debug("Executing metadata query")
         results = self.qdrant_client.scroll(
             collection_name=self.collection_name,
             scroll_filter=filter_condition,
@@ -184,22 +214,27 @@ class VectorKnowledgeGraph:
             limit=1000
         )
         
+        logging.info(f"Found {len(results[0])} triples matching metadata criteria")
         return [(hit.payload["subject"], hit.payload["relationship"], hit.payload["object"]) 
                 for hit in results[0]]
 
     def save(self, path=""):
         """Save is now handled automatically by Qdrant's local storage"""
+        logging.debug("Save operation not needed (handled by Qdrant)")
         pass
 
     def load(self, path="VectorKnowledgeGraphData"):
         """Load is now handled automatically by Qdrant's local storage"""
+        logging.debug("Load operation not needed (handled by Qdrant)")
         return True
 
     def build_graph_from_noun(self, query, similarity_threshold=0.8, depth=0, metadata_query=None,
                               return_metadata=False):
+        logging.debug(f"Building graph from noun: {query} with depth: {depth}")
         # Check if collection is empty
         collection_info = self.qdrant_client.get_collection(self.collection_name)
         if collection_info.points_count == 0:
+            logging.warning("Collection is empty")
             return []
 
         # Initialize lists to collect results and a set to keep track of visited nodes
@@ -212,6 +247,7 @@ class VectorKnowledgeGraph:
                 return
 
             visited.add(current_point)
+            logging.debug(f"Processing node: {current_point} at depth {current_depth}")
             current_point_embedding = self.embedding_model.encode([current_point])[0]
 
             # Only search for matches where the current point is the subject
@@ -240,6 +276,7 @@ class VectorKnowledgeGraph:
 
         # Kick off the recursive search from the query point
         recursive_search(query, 0)
+        logging.info(f"Found {len(collected_triples)} triples in graph traversal")
 
         if return_metadata:
             return list(zip(collected_triples, collected_metadata))
@@ -247,9 +284,11 @@ class VectorKnowledgeGraph:
             return list(set(collected_triples))
 
     def visualize_graph_from_nouns(self, queries, similarity_threshold=0.8, depth=0, metadata_query=None):
+        logging.info(f"Visualizing graph for queries: {queries}")
         # Check if collection is empty
         collection_info = self.qdrant_client.get_collection(self.collection_name)
         if collection_info.points_count == 0:
+            logging.warning("Collection is empty")
             return
 
         G = nx.DiGraph()
@@ -260,6 +299,7 @@ class VectorKnowledgeGraph:
                 return
 
             visited.add(current_point)
+            logging.debug(f"Processing node: {current_point} at depth {current_depth}")
             current_point_embedding = self.embedding_model.encode([current_point])[0]
 
             # Only search for matches where the current point is the subject
@@ -287,6 +327,8 @@ class VectorKnowledgeGraph:
         for query in queries:
             recursive_search(query, 0)
 
+        logging.info(f"Graph contains {len(G.nodes)} nodes and {len(G.edges)} edges")
+        logging.debug("Drawing graph visualization")
         pos = nx.spring_layout(G, seed=42)
         nx.draw_networkx_nodes(G, pos, node_size=500)
         nx.draw_networkx_edges(G, pos, width=1.0, alpha=0.5)
@@ -294,10 +336,16 @@ class VectorKnowledgeGraph:
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
         nx.draw_networkx_labels(G, pos, font_size=12)
         plt.show()
+        logging.info("Graph visualization completed")
 
 def main():
+    # Set up debug logging for testing
+    log_file = f"vector_knowledge_graph_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    setup_logging(debug_mode=True, log_file=log_file)
+    logging.info("Starting VectorKnowledgeGraph test run")
+    
     # Test basic triple operations
-    print("Testing basic triple operations...")
+    logging.info("Testing basic triple operations...")
     
     # Create a test graph
     kgraph = VectorKnowledgeGraph(path="Test_GraphStoreMemory")
@@ -388,34 +436,36 @@ def main():
         ]
         
         # Add triples
+        logging.info("Adding test triples to knowledge graph")
         kgraph.add_triples(test_triples, test_metadata)
         
         # Test querying by noun with multiple hops
-        print("\nTesting query by noun 'cat' with depth=2:")
+        logging.info("Testing query by noun 'cat' with depth=2")
         results = kgraph.build_graph_from_noun("cat", similarity_threshold=0.7, depth=2)
-        print("\nFound triples:")
+        logging.info("Found triples:")
         for triple in results:
-            print(triple)
+            logging.info(triple)
         
         # Test querying by subject-relationship with complex relationships
-        print("\nTesting query by subject-relationship ('cat', 'hunts'):")
+        logging.info("Testing query by subject-relationship ('cat', 'hunts')")
         results = kgraph.build_graph_from_subject_relationship(("cat", "hunts"), similarity_threshold=0.7)
-        print("\nFound triples:")
+        logging.info("Found triples:")
         for triple in results:
-            print(triple)
+            logging.info(triple)
         
         # Test metadata query with multiple criteria
-        print("\nTesting metadata query (source='biology_textbook'):")
+        logging.info("Testing metadata query (source='biology_textbook')")
         results = kgraph.query_triples_from_metadata({"source": "biology_textbook"})
-        print("\nFound triples:")
+        logging.info("Found triples:")
         for triple in results:
-            print(triple)
+            logging.info(triple)
         
         # Test visualization with multiple starting points
-        print("\nTesting visualization with multiple starting points...")
+        logging.info("Testing visualization with multiple starting points...")
         kgraph.visualize_graph_from_nouns(["cat", "bird", "dog"], similarity_threshold=0.7, depth=2)
     
     finally:
+        logging.info("Test run completed")
         # Clean up test data
         if hasattr(kgraph, 'qdrant_client'):
             kgraph.qdrant_client.close()

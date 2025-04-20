@@ -83,8 +83,8 @@ class ContextSummarizers:
         Initialize the Context Summarizers.
         """
         self.client = OpenAI(
-            base_url=os.getenv('LLM_API_BASE'),
             api_key=os.getenv('LLM_API_KEY'),
+            base_url=os.getenv('LLM_API_BASE')
         )
 
     def generate_summary(self, text: str) -> str:

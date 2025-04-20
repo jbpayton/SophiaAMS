@@ -7,6 +7,9 @@ import os
 import shutil
 import atexit
 from openai import OpenAI
+import logging
+from datetime import datetime
+from utils import setup_logging
 
 class AssociativeSemanticMemory:
     def __init__(self, kgraph: VectorKnowledgeGraph):
@@ -18,16 +21,19 @@ class AssociativeSemanticMemory:
         """
         self.kgraph = kgraph
         self.summarizer = ContextSummarizers()  # No longer passing kgraph
+        logging.debug("Initialized AssociativeSemanticMemory")
 
     def close(self):
         """Close the knowledge graph connection and release resources."""
+        logging.debug("Closing AssociativeSemanticMemory")
         if hasattr(self, 'kgraph') and self.kgraph:
             try:
                 # Close the Qdrant client if it exists
                 if hasattr(self.kgraph, 'qdrant_client'):
                     self.kgraph.qdrant_client.close()
+                    logging.debug("Closed Qdrant client")
             except Exception as e:
-                print(f"Warning: Could not close Qdrant client: {e}")
+                logging.error(f"Could not close Qdrant client: {e}")
 
     def ingest_text(self, text: str, source: str = "unknown", timestamp: Optional[float] = None) -> Dict:
         """
@@ -45,20 +51,30 @@ class AssociativeSemanticMemory:
         Returns:
             dict: Results including summary and triples
         """
+        logging.info(f"Processing text from source: {source}")
+        logging.debug(f"Text length: {len(text)} characters")
+        
         # Generate summary
+        logging.debug("Generating summary")
         summary = self.summarizer.generate_summary(text)
+        logging.debug(f"Generated summary of length: {len(summary)} characters")
         
         # Extract triples from original text
+        logging.debug("Extracting triples from original text")
         original_triples = extract_triples_from_string(text, source=source, timestamp=timestamp)
+        logging.info(f"Extracted {len(original_triples.get('triples', []))} triples from original text")
         
         # Extract triples from summary
+        logging.debug("Extracting triples from summary")
         summary_triples = extract_triples_from_string(summary, source=f"{source}_summary", timestamp=timestamp)
+        logging.info(f"Extracted {len(summary_triples.get('triples', []))} triples from summary")
         
         # Prepare triples and metadata for storage
         all_triples: List[Tuple[str, str, str]] = []
         metadata_list: List[Dict] = []
         
         # Process original triples
+        logging.debug("Processing original triples")
         for triple_data in original_triples.get("triples", []):
             try:
                 subject = triple_data["subject"]["text"]
@@ -77,11 +93,12 @@ class AssociativeSemanticMemory:
                 }
                 metadata_list.append(metadata)
             except Exception as e:
-                print(f"Error processing triple: {e}")
-                print(f"Triple data: {triple_data}")
+                logging.error(f"Error processing triple: {e}")
+                logging.debug(f"Triple data: {triple_data}")
                 continue
         
         # Process summary triples
+        logging.debug("Processing summary triples")
         for triple_data in summary_triples.get("triples", []):
             try:
                 subject = triple_data["subject"]["text"]
@@ -100,13 +117,15 @@ class AssociativeSemanticMemory:
                 }
                 metadata_list.append(metadata)
             except Exception as e:
-                print(f"Error processing summary triple: {e}")
-                print(f"Triple data: {triple_data}")
+                logging.error(f"Error processing summary triple: {e}")
+                logging.debug(f"Triple data: {triple_data}")
                 continue
         
         # Add all triples to knowledge graph
         if all_triples:
+            logging.debug(f"Adding {len(all_triples)} triples to knowledge graph")
             self.kgraph.add_triples(all_triples, metadata_list)
+            logging.info(f"Successfully added {len(all_triples)} triples to knowledge graph")
         
         # Return results
         return {
@@ -127,9 +146,14 @@ class AssociativeSemanticMemory:
         Returns:
             list: Related triples and their metadata, ordered by vector similarity
         """
+        logging.info(f"Querying related information for: {text}")
+        logging.debug(f"Include summary triples: {include_summary_triples}")
+        
         # Extract triples from query text
+        logging.debug("Extracting triples from query text")
         query_result = extract_triples_from_string(text, is_query=True)
         query_triples = query_result["query_triples"]
+        logging.info(f"Extracted {len(query_triples)} query triples")
         
         # Collect related information
         related_triples = []
@@ -140,19 +164,23 @@ class AssociativeSemanticMemory:
                 subject = triple_data["subject"]["text"]
                 obj = triple_data["object"]["text"]
                 
+                logging.debug(f"Searching for connections through subject: {subject}")
                 # Search for connections through subject endpoint
                 subject_results = self.kgraph.build_graph_from_noun(
                     subject,
                     similarity_threshold=0.7,
                     return_metadata=True
                 )
+                logging.info(f"Found {len(subject_results)} connections through subject")
                 
+                logging.debug(f"Searching for connections through object: {obj}")
                 # Search for connections through object endpoint
                 object_results = self.kgraph.build_graph_from_noun(
                     obj,
                     similarity_threshold=0.7,
                     return_metadata=True
                 )
+                logging.info(f"Found {len(object_results)} connections through object")
                 
                 # Combine results
                 results = subject_results + object_results
@@ -160,6 +188,7 @@ class AssociativeSemanticMemory:
                 # Filter out summary triples if needed
                 if not include_summary_triples:
                     results = [(t, m) for t, m in results if not m.get("is_from_summary", False)]
+                    logging.debug("Filtered out summary triples")
                 
                 # Add query context
                 for triple, metadata in results:
@@ -172,10 +201,11 @@ class AssociativeSemanticMemory:
                     related_triples.append((triple, metadata))
             
             except Exception as e:
-                print(f"Error processing query triple: {e}")
-                print(f"Query triple data: {triple_data}")
+                logging.error(f"Error processing query triple: {e}")
+                logging.debug(f"Query triple data: {triple_data}")
                 continue
         
+        logging.info(f"Found {len(related_triples)} related triples")
         return related_triples
 
     def summarize_results(self, results: List[Tuple]) -> str:
@@ -188,10 +218,13 @@ class AssociativeSemanticMemory:
         Returns:
             str: A natural language summary of the retrieved information
         """
+        logging.info("Summarizing results")
         if not results:
+            logging.warning("No results to summarize")
             return "No relevant information found."
             
         # Extract all unique information
+        logging.debug("Extracting unique information from results")
         unique_info = set()
         for triple, metadata in results:
             # Get the triple components
@@ -219,6 +252,8 @@ class AssociativeSemanticMemory:
             
             unique_info.add(desc)
         
+        logging.debug(f"Extracted {len(unique_info)} unique pieces of information")
+        
         # Create a prompt for the LLM to format this into a paragraph
         prompt = f"""Please combine the following pieces of information into a coherent paragraph.
 The information should flow naturally and maintain all the important details.
@@ -229,6 +264,7 @@ Information to combine:
 Please write a paragraph that incorporates all this information in a natural way:"""
         
         # Call the LLM to format the information
+        logging.debug("Calling LLM to generate summary")
         client = OpenAI(
             base_url=os.getenv('LLM_API_BASE'),
             api_key=os.getenv('LLM_API_KEY'),
@@ -240,6 +276,7 @@ Please write a paragraph that incorporates all this information in a natural way
             temperature=0.7
         )
         
+        logging.info("Successfully generated summary")
         return response.choices[0].message.content
 
 def cleanup_test_directory():
@@ -272,8 +309,13 @@ def cleanup_test_directory():
         print(f"Warning: Could not clean up test directory: {e}")
 
 if __name__ == "__main__":
+    # Set up debug logging for testing
+    log_file = f"associative_memory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    setup_logging(debug_mode=True, log_file=log_file)
+    logging.info("Starting AssociativeSemanticMemory test run")
+    
     # Test the associative semantic memory
-    print("Testing AssociativeSemanticMemory...")
+    logging.info("Testing AssociativeSemanticMemory...")
     
     # Create a test knowledge graph
     kgraph = VectorKnowledgeGraph(path="Test_AssociativeMemory")
@@ -294,74 +336,74 @@ if __name__ == "__main__":
         """
         
         # Process text through memory system
-        print("\nProcessing text...")
+        logging.info("Processing test text...")
         result = memory.ingest_text(test_text, source="VOCALOID Wiki")
         
         # Print summary
-        print("\nGenerated Summary:")
-        print(result["summary"])
+        logging.info("Generated Summary:")
+        logging.info(result["summary"])
         
         # Test natural language queries
-        print("\nTesting natural language queries...")
+        logging.info("Testing natural language queries...")
         
         # Test 1: Simple statement
-        print("\nQuery 1: 'I like Hatsune Miku'")
+        logging.info("Query 1: 'I like Hatsune Miku'")
         related = memory.query_related_information("I like Hatsune Miku")
-        print("\nRelated information:")
+        logging.info("Related information:")
         for triple, metadata in related:
-            print(f"\nTriple: {triple}")
-            print(f"Source: {metadata['source']}")
-            print(f"From summary: {metadata['is_from_summary']}")
-            print("\nProperties:")
-            print(f"Subject properties: {metadata.get('subject_properties', {})}")
-            print(f"Verb properties: {metadata.get('verb_properties', {})}")
-            print(f"Object properties: {metadata.get('object_properties', {})}")
+            logging.info(f"Triple: {triple}")
+            logging.info(f"Source: {metadata['source']}")
+            logging.info(f"From summary: {metadata['is_from_summary']}")
+            logging.info("Properties:")
+            logging.info(f"Subject properties: {metadata.get('subject_properties', {})}")
+            logging.info(f"Verb properties: {metadata.get('verb_properties', {})}")
+            logging.info(f"Object properties: {metadata.get('object_properties', {})}")
             if 'query_context' in metadata:
-                print(f"\nQuery context: {metadata['query_context']}")
-            print("---")
+                logging.info(f"Query context: {metadata['query_context']}")
+            logging.info("---")
         
         # Print summary of results
-        print("\nSummary of retrieved information:")
-        print(memory.summarize_results(related))
+        logging.info("Summary of retrieved information:")
+        logging.info(memory.summarize_results(related))
         
         # Test 2: Question format
-        print("\nQuery 2: 'Tell me about Miku's voice'")
+        logging.info("Query 2: 'Tell me about Miku's voice'")
         related = memory.query_related_information("Tell me about Miku's voice")
-        print("\nRelated information:")
+        logging.info("Related information:")
         for triple, metadata in related:
-            print(f"\nTriple: {triple}")
-            print(f"Source: {metadata['source']}")
-            print(f"From summary: {metadata['is_from_summary']}")
-            print("\nProperties:")
-            print(f"Subject properties: {metadata.get('subject_properties', {})}")
-            print(f"Verb properties: {metadata.get('verb_properties', {})}")
-            print(f"Object properties: {metadata.get('object_properties', {})}")
+            logging.info(f"Triple: {triple}")
+            logging.info(f"Source: {metadata['source']}")
+            logging.info(f"From summary: {metadata['is_from_summary']}")
+            logging.info("Properties:")
+            logging.info(f"Subject properties: {metadata.get('subject_properties', {})}")
+            logging.info(f"Verb properties: {metadata.get('verb_properties', {})}")
+            logging.info(f"Object properties: {metadata.get('object_properties', {})}")
             if 'query_context' in metadata:
-                print(f"\nQuery context: {metadata['query_context']}")
-            print("---")
+                logging.info(f"Query context: {metadata['query_context']}")
+            logging.info("---")
         
         # Print summary of results
-        print("\nSummary of retrieved information:")
-        print(memory.summarize_results(related))
+        logging.info("Summary of retrieved information:")
+        logging.info(memory.summarize_results(related))
         
         # Test 3: Excluding summary triples
-        print("\nQuery 3: 'Who developed Miku?' (excluding summary triples)")
+        logging.info("Query 3: 'Who developed Miku?' (excluding summary triples)")
         related_no_summary = memory.query_related_information("Who developed Miku?", include_summary_triples=False)
-        print("\nRelated information (original only):")
+        logging.info("Related information (original only):")
         for triple, metadata in related_no_summary:
-            print(f"\nTriple: {triple}")
-            print(f"Source: {metadata['source']}")
-            print("\nProperties:")
-            print(f"Subject properties: {metadata.get('subject_properties', {})}")
-            print(f"Verb properties: {metadata.get('verb_properties', {})}")
-            print(f"Object properties: {metadata.get('object_properties', {})}")
+            logging.info(f"Triple: {triple}")
+            logging.info(f"Source: {metadata['source']}")
+            logging.info("Properties:")
+            logging.info(f"Subject properties: {metadata.get('subject_properties', {})}")
+            logging.info(f"Verb properties: {metadata.get('verb_properties', {})}")
+            logging.info(f"Object properties: {metadata.get('object_properties', {})}")
             if 'query_context' in metadata:
-                print(f"\nQuery context: {metadata['query_context']}")
-            print("---")
+                logging.info(f"Query context: {metadata['query_context']}")
+            logging.info("---")
         
         # Print summary of results
-        print("\nSummary of retrieved information:")
-        print(memory.summarize_results(related_no_summary))
+        logging.info("Summary of retrieved information:")
+        logging.info(memory.summarize_results(related_no_summary))
     
     finally:
         # Close the memory system and knowledge graph connection
@@ -369,6 +411,7 @@ if __name__ == "__main__":
             try:
                 memory.close()
             except Exception as e:
-                print(f"Warning: Error closing memory system: {e}")
+                logging.error(f"Error closing memory system: {e}")
         # Ensure cleanup happens
-        cleanup_test_directory() 
+        cleanup_test_directory()
+        logging.info("Test run completed") 
