@@ -9,9 +9,10 @@ import os
 import shutil
 import json
 from openai import OpenAI
-from utils import setup_logging
+import logging
 from datetime import datetime
 import tiktoken
+from utils import setup_logging
 
 # =============================================
 # Document Processing Classes
@@ -46,12 +47,12 @@ Analyze this HTML content and identify the main content area. Look for:
 3. Footer/header elements to exclude
 
 Return a JSON object with:
-{
+{{
     "main_content_selectors": ["list", "of", "selectors"],
     "exclude_selectors": ["list", "of", "selectors"],
     "content_type": "wiki/article/blog/etc",
     "confidence": "high/medium/low"
-}
+}}
 
 HTML content:
 {content}
@@ -60,7 +61,7 @@ HTML content:
 class WebPageSource(DocumentSource):
     """Handles web page content extraction with proper chunking."""
     
-    def __init__(self, uri: str, chunk_size: int = 4000, overlap: int = 500):
+    def __init__(self, uri: str, chunk_size: int = 1024, overlap: int = 128):
         super().__init__(uri)
         self.chunk_size = chunk_size  # Target token count
         self.overlap = overlap  # Token overlap between chunks
@@ -75,7 +76,9 @@ class WebPageSource(DocumentSource):
         )
         # Initialize tokenizer
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
-        logging.debug(f"Initialized WebPageSource for {uri} with chunk_size={chunk_size} tokens")
+        # Initialize logger
+        self.logger = logging.getLogger('DocumentProcessor.WebPageSource')
+        self.logger.debug(f"Initialized WebPageSource for {uri} with chunk_size={chunk_size} tokens")
     
     def _clean_text(self, text: str) -> str:
         """Clean and normalize text content."""
@@ -88,31 +91,64 @@ class WebPageSource(DocumentSource):
     def _analyze_content_structure(self, soup: BeautifulSoup) -> Dict:
         """Use LLM to analyze the page structure and identify content areas."""
         try:
-            logging.debug("Starting content structure analysis")
             # Extract a sample of the page (first 2000 chars) for analysis
             sample_content = str(soup)[:2000]
             
             # Get content analysis from LLM
-            logging.debug("Sending content to LLM for analysis")
             response = self.llm_client.chat.completions.create(
                 model=os.getenv('SUMMARIZATION_MODEL', 'gemma-3-4b-it-qat'),
                 messages=[
                     {"role": "system", "content": "You are a web content analyzer. Analyze the HTML structure and identify the main content area and elements to exclude."},
                     {"role": "user", "content": CONTENT_ANALYSIS_PROMPT.format(content=sample_content)}
                 ],
-                temperature=0.1
+                temperature=0.1,
+                max_tokens=500
             )
             
-            # Parse the response
-            analysis = json.loads(response.choices[0].message.content)
-            logging.debug(f"Content analysis result: {json.dumps(analysis, indent=2)}")
-            return analysis
+            try:
+                # Parse the response and validate it
+                analysis_text = response.choices[0].message.content.strip()
+                
+                # Try to find JSON content within the response
+                import re
+                json_match = re.search(r'\{.*\}', analysis_text, re.DOTALL)
+                if json_match:
+                    analysis = json.loads(json_match.group())
+                else:
+                    raise ValueError("No JSON content found in response")
+                
+                # Validate required fields
+                required_fields = ['main_content_selectors', 'exclude_selectors', 'content_type', 'confidence']
+                missing_fields = [field for field in required_fields if field not in analysis]
+                if missing_fields:
+                    raise ValueError(f"Missing required fields: {missing_fields}")
+                
+                return analysis
+                
+            except json.JSONDecodeError as e:
+                self.logger.error(f"Failed to parse LLM response as JSON: {e}")
+                raise
             
         except Exception as e:
-            logging.error(f"Error analyzing content structure: {e}")
+            self.logger.error(f"Error analyzing content structure: {str(e)}")
             return {
-                "main_content_selectors": [],
-                "exclude_selectors": [],
+                "main_content_selectors": [
+                    'article',
+                    'main',
+                    '#mw-content-text',
+                    '.mw-parser-output',
+                    '.WikiaMainContent',
+                    '.wiki-content',
+                    '.page-content'
+                ],
+                "exclude_selectors": [
+                    'nav',
+                    'header',
+                    'footer',
+                    'aside',
+                    '.WikiaRail',
+                    '.wiki-sidebar'
+                ],
                 "content_type": "unknown",
                 "confidence": "low"
             }
@@ -176,12 +212,11 @@ class WebPageSource(DocumentSource):
     
     def _chunk_text(self, text: str) -> List[str]:
         """Split text into overlapping chunks based on token count, avoiding duplicate content."""
-        logging.debug(f"Starting text chunking. Text length: {len(text)} characters")
+        self.logger.info(f"Starting text chunking. Text length: {len(text)} characters")
         
         # Tokenize the text
         tokens = self.tokenizer.encode(text)
         total_tokens = len(tokens)
-        logging.debug(f"Total tokens in text: {total_tokens}")
         
         chunks = []
         start = 0
@@ -209,6 +244,8 @@ class WebPageSource(DocumentSource):
                     # Adjust end position to the sentence boundary
                     boundary_tokens = self.tokenizer.encode(text_overlap[:last_boundary+1])
                     end = start + (self.chunk_size - self.overlap) + len(boundary_tokens)
+                    # Ensure we don't exceed total tokens
+                    end = min(end, total_tokens)
             
             # Extract the chunk
             chunk_tokens = tokens[start:end]
@@ -225,29 +262,39 @@ class WebPageSource(DocumentSource):
                     if overlap_start > 0:
                         chunk_text = chunk_text[overlap_start + self.overlap:]
                         if not chunk_text.strip():
+                            # If we have no new content, move to next chunk
+                            start = end
                             continue
                 
                 chunks.append(chunk_text)
-                logging.debug(f"Created chunk {len(chunks)}: {len(chunk_tokens)} tokens, {len(chunk_text)} characters")
+                self.logger.info(f"Created chunk {len(chunks)}: {len(chunk_tokens)} tokens, {len(chunk_text)} characters")
             
             # Move start position, accounting for overlap
-            start = end - self.overlap
+            new_start = end - self.overlap
+            if new_start <= start:
+                # Prevent infinite loop by ensuring we make progress
+                new_start = start + 1
+            start = new_start
+            
+            # Safety check to prevent infinite loops
+            if start >= total_tokens:
+                break
         
-        logging.info(f"Created {len(chunks)} chunks from text, average size: {total_tokens/len(chunks):.1f} tokens per chunk")
+        self.logger.info(f"Created {len(chunks)} chunks from text, average size: {total_tokens/len(chunks):.1f} tokens per chunk")
         return chunks
     
     def fetch_content(self) -> Dict:
         """Fetch and process web page content."""
-        logging.info(f"Fetching content from {self.uri}")
+        self.logger.info(f"Fetching content from {self.uri}")
         try:
             # Attempt to fetch the page with timeout
             try:
-                logging.debug("Making HTTP request")
+                self.logger.debug("Making HTTP request")
                 response = requests.get(self.uri, headers=self.headers, timeout=10)
                 response.raise_for_status()
-                logging.debug(f"HTTP response status: {response.status_code}")
+                self.logger.debug(f"HTTP response status: {response.status_code}")
             except requests.exceptions.RequestException as e:
-                logging.error(f"Failed to fetch URL: {str(e)}")
+                self.logger.error(f"Failed to fetch URL: {str(e)}")
                 return {
                     'title': '',
                     'uri': self.uri,
@@ -262,33 +309,33 @@ class WebPageSource(DocumentSource):
                 }
             
             # Parse HTML content
-            logging.debug("Parsing HTML content")
+            self.logger.debug("Parsing HTML content")
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # Extract title
             title = soup.title.string if soup.title else ''
-            logging.debug(f"Extracted title: {title}")
+            self.logger.debug(f"Extracted title: {title}")
             
             # Extract main content
-            logging.debug("Starting content structure analysis")
+            self.logger.debug("Starting content structure analysis")
             try:
                 content_analysis = self._analyze_content_structure(soup)
-                logging.debug(f"Content analysis result: {content_analysis}")
+                self.logger.debug(f"Content analysis result: {content_analysis}")
                 
                 # Extract main content using identified selectors
                 main_content = None
                 for selector in content_analysis.get('main_content_selectors', []):
                     main_content = soup.select_one(selector)
                     if main_content:
-                        logging.debug(f"Found main content using selector: {selector}")
+                        self.logger.debug(f"Found main content using selector: {selector}")
                         break
                 
                 if not main_content:
-                    logging.warning("Could not find main content using selectors, falling back to common selectors")
+                    self.logger.warning("Could not find main content using selectors, falling back to common selectors")
                     main_content = self._extract_main_content(soup)
                 
                 if not main_content:
-                    logging.error("Could not extract main content")
+                    self.logger.error("Could not extract main content")
                     return {
                         'title': title,
                         'uri': self.uri,
@@ -304,17 +351,17 @@ class WebPageSource(DocumentSource):
                 
                 # Extract text content
                 text_content = main_content.get_text()
-                logging.debug(f"Extracted text content length: {len(text_content)} characters")
+                self.logger.debug(f"Extracted text content length: {len(text_content)} characters")
                 
                 # Extract images
-                logging.debug("Extracting images")
+                self.logger.debug("Extracting images")
                 images = [img.get('src') for img in main_content.find_all('img') if img.get('src')]
-                logging.debug(f"Found {len(images)} images")
+                self.logger.debug(f"Found {len(images)} images")
                 
                 # Chunk text content
-                logging.debug("Chunking text content")
+                self.logger.debug("Chunking text content")
                 chunks = self._chunk_text(text_content)
-                logging.info(f"Created {len(chunks)} chunks from content")
+                self.logger.info(f"Created {len(chunks)} chunks from content")
                 
                 return {
                     'title': title,
@@ -330,7 +377,7 @@ class WebPageSource(DocumentSource):
                 }
                 
             except Exception as e:
-                logging.error(f"Error analyzing content structure: {str(e)}")
+                self.logger.error(f"Error analyzing content structure: {str(e)}")
                 # Fall back to basic content extraction
                 main_content = self._extract_main_content(soup)
                 if not main_content:
@@ -349,17 +396,17 @@ class WebPageSource(DocumentSource):
                 
                 # Extract text content
                 text_content = main_content.get_text()
-                logging.debug(f"Extracted text content length: {len(text_content)} characters")
+                self.logger.debug(f"Extracted text content length: {len(text_content)} characters")
                 
                 # Extract images
-                logging.debug("Extracting images")
+                self.logger.debug("Extracting images")
                 images = [img.get('src') for img in main_content.find_all('img') if img.get('src')]
-                logging.debug(f"Found {len(images)} images")
+                self.logger.debug(f"Found {len(images)} images")
                 
                 # Chunk text content
-                logging.debug("Chunking text content")
+                self.logger.debug("Chunking text content")
                 chunks = self._chunk_text(text_content)
-                logging.info(f"Created {len(chunks)} chunks from content")
+                self.logger.info(f"Created {len(chunks)} chunks from content")
                 
                 return {
                     'title': title,
@@ -375,7 +422,7 @@ class WebPageSource(DocumentSource):
                 }
             
         except Exception as e:
-            logging.error(f"Unexpected error: {str(e)}")
+            self.logger.error(f"Unexpected error: {str(e)}")
             return {
                 'title': '',
                 'uri': self.uri,
@@ -394,25 +441,33 @@ class DocumentProcessor:
     
     def __init__(self, memory: AssociativeSemanticMemory):
         self.memory = memory
-        logging.debug("Initialized DocumentProcessor")
+        self.logger = logging.getLogger('DocumentProcessor')
+        self.logger.debug("Initialized DocumentProcessor")
     
     def process_document(self, source: DocumentSource) -> Dict:
         """Process a document and ingest it into the semantic memory."""
-        logging.info(f"Processing document from source: {source.uri}")
+        start_time = time.time()
+        self.logger.info(f"Processing document from source: {source.uri}")
         content = source.fetch_content()
         
         if not content['chunks']:
-            logging.warning(f"No content to process from {source.uri}")
+            self.logger.warning(f"No content to process from {source.uri}")
             return {
                 'success': False,
                 'error': 'No content to process',
                 'metadata': content['metadata']
             }
         
+        total_chunks = len(content['chunks'])
+        processed_chunks = 0
+        failed_chunks = 0
         results = []
+        
+        self.logger.info(f"Starting to process {total_chunks} chunks")
         for i, chunk in enumerate(content['chunks']):
             try:
-                logging.debug(f"Processing chunk {i+1}/{len(content['chunks'])}")
+                chunk_start = time.time()
+                self.logger.info(f"Processing chunk {i+1}/{total_chunks} ({len(chunk)} characters)")
                 # Process each chunk with the existing memory system
                 result = self.memory.ingest_text(
                     text=chunk,
@@ -420,16 +475,37 @@ class DocumentProcessor:
                     timestamp=content['metadata']['fetch_time']
                 )
                 results.append(result)
-                logging.debug(f"Successfully processed chunk {i+1}")
+                processed_chunks += 1
+                chunk_time = time.time() - chunk_start
+                self.logger.info(f"Successfully processed chunk {i+1} in {chunk_time:.2f}s")
+                self.logger.debug(f"Chunk {i+1} results: {len(result.get('original_triples', {}).get('triples', []))} original triples, {len(result.get('summary_triples', {}).get('triples', []))} summary triples")
             except Exception as e:
-                logging.error(f"Error processing chunk {i} from {content['uri']}: {e}")
+                failed_chunks += 1
+                self.logger.error(f"Error processing chunk {i+1} from {content['uri']}: {str(e)}")
+                self.logger.debug("Error details:", exc_info=True)
                 continue
+            
+            # Log progress every 25% or when processing is slow
+            if (i + 1) % max(1, total_chunks // 4) == 0 or chunk_time > 10:
+                progress = (i + 1) / total_chunks * 100
+                elapsed = time.time() - start_time
+                avg_time = elapsed / (i + 1)
+                remaining = (total_chunks - (i + 1)) * avg_time
+                self.logger.info(f"Progress: {progress:.1f}% ({i+1}/{total_chunks})")
+                self.logger.info(f"Average processing time per chunk: {avg_time:.2f}s")
+                self.logger.info(f"Estimated time remaining: {remaining:.2f}s")
         
-        logging.info(f"Successfully processed {len(results)} chunks from {source.uri}")
+        total_time = time.time() - start_time
+        self.logger.info(f"Completed processing {processed_chunks}/{total_chunks} chunks in {total_time:.2f}s")
+        if failed_chunks:
+            self.logger.warning(f"Failed to process {failed_chunks} chunks")
+        
         return {
             'success': True,
-            'processed_chunks': len(results),
-            'total_chunks': len(content['chunks']),
+            'processed_chunks': processed_chunks,
+            'failed_chunks': failed_chunks,
+            'total_chunks': total_chunks,
+            'processing_time': total_time,
             'metadata': content['metadata'],
             'images': content['images']
         }
@@ -462,42 +538,85 @@ if __name__ == "__main__":
     
     try:
         # Process each page
-        for url in test_urls:
-            logging.info(f"\nProcessing {url}...")
-            source = WebPageSource(url)
-            result = processor.process_document(source)
+        total_start = time.time()
+        total_processed = 0
+        total_failed = 0
+        
+        for i, url in enumerate(test_urls, 1):
+            logging.info(f"\nProcessing URL {i}/{len(test_urls)}: {url}")
+            url_start = time.time()
             
-            if result['success']:
-                logging.info(f"Successfully processed {result['processed_chunks']} chunks")
-                logging.info(f"Found {len(result['images'])} images")
+            try:
+                source = WebPageSource(url)
+                result = processor.process_document(source)
                 
-                # Test querying the processed content
-                logging.info("\nTesting queries...")
-                queries = [
-                    "Who is Ragna the Bloodedge?",
-                    "What is BlazBlue: Centralfiction?",
-                    "Tell me about Rachel Alucard",
-                    "What is Vocaloid?",
-                    "Who is Kasane Teto?",
-                    "Tell me about Hatsune Miku"
-                ]
-                
-                for query in queries:
-                    logging.info(f"\nQuery: {query}")
-                    related = memory.query_related_information(query)
-                    logging.info(f"Found {len(related)} related triples")
+                if result['success']:
+                    total_processed += result['processed_chunks']
+                    if result.get('failed_chunks', 0) > 0:
+                        total_failed += result['failed_chunks']
                     
-                    # Print a summary of the results
-                    if related:
-                        logging.info("\nSummary:")
-                        logging.info(memory.summarize_results(related))
-            else:
-                logging.error(f"Failed to process document: {result.get('error', 'Unknown error')}")
-                if 'metadata' in result and 'error' in result['metadata']:
-                    logging.error(f"Error details: {result['metadata']['error']}")
+                    logging.info(f"Successfully processed {result['processed_chunks']} chunks")
+                    logging.info(f"Found {len(result['images'])} images")
+                    logging.info(f"Processing time: {result.get('processing_time', 0):.2f}s")
+                    
+                    # Test querying the processed content
+                    logging.info("\nTesting queries...")
+                    queries = [
+                        "Who is Ragna the Bloodedge?",
+                        "What is BlazBlue: Centralfiction?",
+                        "Tell me about Rachel Alucard",
+                        "What is Vocaloid?",
+                        "Who is Kasane Teto?",
+                        "Tell me about Hatsune Miku"
+                    ]
+                    
+                    for query in queries:
+                        query_start = time.time()
+                        logging.info(f"\nQuery: {query}")
+                        related = memory.query_related_information(query)
+                        logging.info(f"Found {len(related)} related triples in {time.time() - query_start:.2f}s")
+                        
+                        # Print a summary of the results
+                        if related:
+                            summary_start = time.time()
+                            logging.info("\nSummary:")
+                            summary = memory.summarize_results(related)
+                            logging.info(summary)
+                            logging.info(f"Summary generation time: {time.time() - summary_start:.2f}s")
+                else:
+                    total_failed += 1
+                    logging.error(f"Failed to process document: {result.get('error', 'Unknown error')}")
+                    if 'metadata' in result and 'error' in result['metadata']:
+                        logging.error(f"Error details: {result['metadata']['error']}")
+            
+            except Exception as e:
+                total_failed += 1
+                logging.error(f"Error processing URL {url}: {str(e)}")
+                logging.debug("Error details:", exc_info=True)
+                continue
+            
+            url_time = time.time() - url_start
+            logging.info(f"\nCompleted processing URL {i}/{len(test_urls)} in {url_time:.2f}s")
+            
+            # Log progress
+            progress = i / len(test_urls) * 100
+            elapsed = time.time() - total_start
+            avg_time = elapsed / i
+            remaining = (len(test_urls) - i) * avg_time
+            logging.info(f"Overall progress: {progress:.1f}%")
+            logging.info(f"Average time per URL: {avg_time:.2f}s")
+            logging.info(f"Estimated time remaining: {remaining:.2f}s")
     
     finally:
         # Clean up
+        total_time = time.time() - total_start
+        logging.info("\nTest run summary:")
+        logging.info(f"Total URLs processed: {len(test_urls)}")
+        logging.info(f"Total chunks processed: {total_processed}")
+        logging.info(f"Total failures: {total_failed}")
+        logging.info(f"Total processing time: {total_time:.2f}s")
+        logging.info(f"Average time per URL: {total_time/len(test_urls):.2f}s")
+        
         logging.info("Cleaning up resources")
         memory.close()
         if os.path.exists("Test_DocumentProcessing"):
