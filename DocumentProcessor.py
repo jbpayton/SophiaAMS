@@ -82,7 +82,7 @@ class WebPageSource(DocumentSource):
     
     def _clean_text(self, text: str) -> str:
         """Clean and normalize text content."""
-        # Remove extra whitespace
+        # Remove extra whitespace and normalize newlines
         text = ' '.join(text.split())
         # Remove common unwanted elements
         text = text.replace('\n', ' ').replace('\r', '')
@@ -214,6 +214,9 @@ class WebPageSource(DocumentSource):
         """Split text into overlapping chunks based on token count, avoiding duplicate content."""
         self.logger.info(f"Starting text chunking. Text length: {len(text)} characters")
         
+        # Clean text before chunking to remove excess newlines
+        text = self._clean_text(text)
+        
         # Tokenize the text
         tokens = self.tokenizer.encode(text)
         total_tokens = len(tokens)
@@ -251,7 +254,7 @@ class WebPageSource(DocumentSource):
             chunk_tokens = tokens[start:end]
             chunk_text = self.tokenizer.decode(chunk_tokens)
             
-            # Clean and add the chunk
+            # Clean the chunk text
             chunk_text = self._clean_text(chunk_text)
             if chunk_text.strip():
                 # Check for significant overlap with previous chunk
@@ -353,6 +356,11 @@ class WebPageSource(DocumentSource):
                 text_content = main_content.get_text()
                 self.logger.debug(f"Extracted text content length: {len(text_content)} characters")
                 
+                # Clean text content of excess whitespace and newlines
+                text_content = ' '.join(text_content.split())
+                text_content = text_content.replace('\t', ' ')
+                self.logger.debug(f"Cleaned text content length: {len(text_content)} characters")
+                
                 # Extract images
                 self.logger.debug("Extracting images")
                 images = [img.get('src') for img in main_content.find_all('img') if img.get('src')]
@@ -397,6 +405,11 @@ class WebPageSource(DocumentSource):
                 # Extract text content
                 text_content = main_content.get_text()
                 self.logger.debug(f"Extracted text content length: {len(text_content)} characters")
+                
+                # Clean text content of excess whitespace and newlines
+                text_content = ' '.join(text_content.split())
+                text_content = text_content.replace('\t', ' ')
+                self.logger.debug(f"Cleaned text content length: {len(text_content)} characters")
                 
                 # Extract images
                 self.logger.debug("Extracting images")
@@ -510,6 +523,43 @@ class DocumentProcessor:
             'images': content['images']
         }
 
+    def export_all_triples_to_json(self, output_file: str) -> Dict:
+        """Export all triples from the knowledge graph to a JSON file."""
+        self.logger.info(f"Exporting all triples to {output_file}")
+        start_time = time.time()
+        
+        try:
+            # Get all triples from the knowledge graph
+            all_triples = self.memory.kgraph.get_all_triples()
+            
+            # Create a dictionary with metadata and triples
+            export_data = {
+                'export_time': time.time(),
+                'export_timestamp': datetime.now().isoformat(),
+                'triple_count': len(all_triples),
+                'triples': all_triples
+            }
+            
+            # Write to JSON file
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2, ensure_ascii=False)
+            
+            elapsed_time = time.time() - start_time
+            self.logger.info(f"Successfully exported {len(all_triples)} triples to {output_file} in {elapsed_time:.2f}s")
+            
+            return {
+                'success': True,
+                'triple_count': len(all_triples),
+                'export_time': elapsed_time
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error exporting triples to JSON: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
 # =============================================
 # Test Code
 # =============================================
@@ -583,6 +633,18 @@ if __name__ == "__main__":
                             summary = memory.summarize_results(related)
                             logging.info(summary)
                             logging.info(f"Summary generation time: {time.time() - summary_start:.2f}s")
+                            
+                            # Log the retrieved triples
+                            logging.info("\nRetrieved Triples:")
+                            for i, triple in enumerate(related[:10]):  # Show first 10 triples
+                                logging.info(f"{i+1}. Subject: {triple['subject']}")
+                                logging.info(f"   Predicate: {triple['predicate']}")
+                                logging.info(f"   Object: {triple['object']}")
+                                logging.info(f"   Confidence: {triple.get('confidence', 'N/A')}")
+                                logging.info(f"   Source: {triple.get('source', 'N/A')}")
+                            
+                            if len(related) > 10:
+                                logging.info(f"... and {len(related) - 10} more triples")
                 else:
                     total_failed += 1
                     logging.error(f"Failed to process document: {result.get('error', 'Unknown error')}")
@@ -616,6 +678,14 @@ if __name__ == "__main__":
         logging.info(f"Total failures: {total_failed}")
         logging.info(f"Total processing time: {total_time:.2f}s")
         logging.info(f"Average time per URL: {total_time/len(test_urls):.2f}s")
+        
+        # Export all triples to JSON
+        export_file = f"triples_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        export_result = processor.export_all_triples_to_json(export_file)
+        if export_result['success']:
+            logging.info(f"Successfully exported {export_result['triple_count']} triples to {export_file}")
+        else:
+            logging.error(f"Failed to export triples: {export_result.get('error', 'Unknown error')}")
         
         logging.info("Cleaning up resources")
         memory.close()

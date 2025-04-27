@@ -218,6 +218,61 @@ class VectorKnowledgeGraph:
         return [(hit.payload["subject"], hit.payload["relationship"], hit.payload["object"]) 
                 for hit in results[0]]
 
+    def get_all_triples(self):
+        """
+        Retrieve all triples stored in the knowledge graph with their metadata.
+        
+        Returns:
+            List of dictionaries, where each dictionary contains subject, predicate, object and metadata
+        """
+        logging.info("Retrieving all triples from knowledge graph")
+        
+        # Check if collection is empty
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning("Collection is empty")
+            return []
+        
+        # Use scroll to retrieve all points
+        all_points = []
+        offset = None
+        
+        while True:
+            # Get a batch of points
+            batch, offset = self.qdrant_client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=None,  # No filter to get all points
+                limit=1000,  # Get 1000 points at a time
+                offset=offset,  # Use the offset from the previous iteration
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            all_points.extend(batch)
+            
+            # If there are no more points, break the loop
+            if len(batch) < 1000 or offset is None:
+                break
+        
+        # Convert points to triple format with metadata
+        triples = []
+        for point in all_points:
+            payload = point.payload
+            triple = {
+                "subject": payload["subject"],
+                "predicate": payload["relationship"],
+                "object": payload["object"]
+            }
+            
+            # Add metadata if available
+            if "metadata" in payload:
+                triple["metadata"] = payload["metadata"]
+            
+            triples.append(triple)
+        
+        logging.info(f"Retrieved {len(triples)} triples from knowledge graph")
+        return triples
+
     def save(self, path=""):
         """Save is now handled automatically by Qdrant's local storage"""
         logging.debug("Save operation not needed (handled by Qdrant)")
