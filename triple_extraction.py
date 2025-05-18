@@ -14,7 +14,8 @@ def extract_triples_from_string(
     text: str, 
     source: Optional[str] = None,
     timestamp: Optional[float] = None,
-    is_query: bool = False
+    is_query: bool = False,
+    speaker: Optional[str] = None
 ) -> Dict:
     """
     Extract semantic triples from a text string.
@@ -24,6 +25,7 @@ def extract_triples_from_string(
         source: Optional source identifier for the text
         timestamp: Optional timestamp for when the information was received
         is_query: Whether this is a query (affects how we process the results)
+        speaker: Optional identifier for who generated this text
         
     Returns:
         Dict containing extracted triples and metadata
@@ -33,8 +35,23 @@ def extract_triples_from_string(
         api_key=os.getenv('LLM_API_KEY'),
     )
     
+    # Parse any speaker information from the text itself
+    # Format: SPEAKER:name|content
+    text_to_extract = text
+    extracted_speaker = speaker
+    
+    if not is_query and text.startswith("SPEAKER:"):
+        try:
+            speaker_parts = text.split("|", 1)
+            if len(speaker_parts) == 2:
+                extracted_speaker = speaker_parts[0].replace("SPEAKER:", "").strip()
+                text_to_extract = speaker_parts[1].strip()
+        except Exception:
+            # If parsing fails, just use the original text
+            text_to_extract = text
+    
     # Prepare the prompt with the input text
-    prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text)
+    prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
     
     # Call the LLM
     response = client.chat.completions.create(
@@ -54,12 +71,26 @@ def extract_triples_from_string(
         result = json.loads(response.choices[0].message.content)
         timestamp = timestamp or time.time()
         
+        # Add speaker to each triple
+        for triple in result.get("triples", []):
+            triple["speaker"] = extracted_speaker
+            
+            # For summary triples, try to infer speaker from the subject if not already set
+            if source and "_summary" in source and not extracted_speaker:
+                subject_text = triple.get("subject", {}).get("text", "").lower()
+                # Common entity names
+                if subject_text in ["sophia", "assistant"]:
+                    triple["speaker"] = "Sophia"
+                elif subject_text in ["alex", "user"]:
+                    triple["speaker"] = "Alex"
+        
         # For queries, we want to return the extracted triples directly
         if is_query:
             return {
                 "query_triples": result["triples"],
                 "timestamp": timestamp,
-                "text": text
+                "text": text_to_extract,
+                "speaker": extracted_speaker
             }
         
         # For regular extraction, return with metadata
@@ -67,7 +98,8 @@ def extract_triples_from_string(
             "triples": result["triples"],
             "source": source,
             "timestamp": timestamp,
-            "text": text
+            "text": text_to_extract,
+            "speaker": extracted_speaker
         }
     except Exception as e:
         print(f"Error parsing response: {e}")
@@ -76,7 +108,8 @@ def extract_triples_from_string(
             "triples": [],
             "source": source,
             "timestamp": timestamp or time.time(),
-            "text": text,
+            "text": text_to_extract,
+            "speaker": extracted_speaker,
             "error": str(e)
         }
 

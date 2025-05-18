@@ -74,6 +74,9 @@ class ConversationProcessor:
             'message_count': total_messages
         }
         
+        # Track entity names for reference resolution
+        entity_references = {}
+        
         # Process each message
         for i, message in enumerate(messages):
             # Skip system messages in the main processing loop
@@ -96,6 +99,12 @@ class ConversationProcessor:
                 # If there's a name field in the message, use that
                 if 'name' in message and message['name']:
                     msg_entity = message['name']
+                    
+                    # Track this entity reference for later resolution
+                    if role == 'user' and msg_entity != 'user':
+                        entity_references['user'] = msg_entity
+                    elif role == 'assistant' and msg_entity != 'assistant':
+                        entity_references['assistant'] = msg_entity
                 
                 self.logger.info(f"Processing message {i+1}/{total_messages} from {role}")
                 self.logger.debug(f"Message {i+1} content:\n---\n{content}\n---")
@@ -108,7 +117,8 @@ class ConversationProcessor:
                     'conversation_timestamp': global_timestamp,
                     'message_index': i,
                     'role': role,
-                    'entity': msg_entity
+                    'entity': msg_entity,
+                    'speaker': msg_entity  # Add explicit speaker field
                 }
                 
                 # Process message with the memory system
@@ -116,17 +126,12 @@ class ConversationProcessor:
                     text=content,
                     source=source,
                     timestamp=msg_timestamp,
-                    entity=msg_entity,
-                    metadata=metadata
+                    speaker=msg_entity  # Pass speaker to ingest_text
                 )
-                
-                # Add conversation context to the result
-                result['message_metadata'] = {
-                    'index': i,
-                    'role': role,
-                    'entity': msg_entity,
-                    'timestamp': msg_timestamp
-                }
+
+                # Add entity and metadata to the result for our tracking
+                result['entity'] = msg_entity
+                result['additional_metadata'] = metadata
                 
                 results.append(result)
                 processed_messages += 1
@@ -146,6 +151,10 @@ class ConversationProcessor:
                 self.logger.debug("Error details:", exc_info=True)
                 continue
         
+        # Process entity references to create links between different names
+        if entity_references:
+            self._create_entity_reference_triples(entity_references, global_timestamp)
+        
         total_time = time.time() - start_time
         self.logger.info(f"Completed processing {processed_messages}/{total_messages} messages in {total_time:.2f}s")
         
@@ -156,11 +165,15 @@ class ConversationProcessor:
         # This could be useful for capturing the overall context
         try:
             if processed_messages > 0:
-                full_conversation = "\n\n".join([
-                    f"{msg['role'].upper()}: {msg['content']}" 
-                    for msg in messages 
-                    if msg['role'] != 'system'
-                ])
+                # Create a version of the conversation with speaker information
+                full_conversation_with_speakers = []
+                for msg in messages:
+                    if msg['role'] != 'system':
+                        speaker = msg.get('name', msg['role'])
+                        content = msg['content']
+                        full_conversation_with_speakers.append(f"SPEAKER:{speaker}|{content}")
+                
+                full_conversation = "\n\n".join(full_conversation_with_speakers)
                 
                 # Create a summary of the conversation
                 conversation_source = f"conversation:{global_timestamp}:summary"
@@ -169,15 +182,18 @@ class ConversationProcessor:
                 conversation_result = self.memory.ingest_text(
                     text=full_conversation,
                     source=conversation_source,
-                    timestamp=global_timestamp,
-                    entity=entity_name,
-                    metadata={
-                        'type': 'conversation_summary',
-                        'entity_name': entity_name,
-                        'message_count': total_messages,
-                        'system_message': system_message
-                    }
+                    timestamp=global_timestamp
                 )
+                
+                # Add entity and metadata for tracking
+                conversation_result['entity'] = entity_name
+                conversation_result['additional_metadata'] = {
+                    'type': 'conversation_summary',
+                    'entity_name': entity_name,
+                    'message_count': total_messages,
+                    'system_message': system_message,
+                    'entity_references': entity_references
+                }
                 
                 self.logger.info(f"Processed full conversation summary")
                 
@@ -198,7 +214,8 @@ class ConversationProcessor:
         }
     
     def query_conversation_memory(self, query: str, entity_name: str = None, 
-                                 limit: int = 10, min_confidence: float = 0.6) -> Dict:
+                                 limit: int = 10, min_confidence: float = 0.6,
+                                 speaker: str = None) -> Dict:
         """
         Query the semantic memory for conversation-related information.
         
@@ -207,6 +224,7 @@ class ConversationProcessor:
             entity_name: Optional entity name to filter results (if None, get all)
             limit: Maximum number of triples to return
             min_confidence: Minimum confidence score for triples
+            speaker: Optional speaker name to filter results
             
         Returns:
             Dict containing query results
@@ -218,11 +236,38 @@ class ConversationProcessor:
         try:
             # Query the memory system
             related = self.memory.query_related_information(
-                query=query, 
-                entity=entity_name,
-                limit=limit, 
-                min_confidence=min_confidence
+                text=query,
+                include_summary_triples=True
             )
+            
+            # Filtered results list
+            filtered_related = []
+            
+            # Apply filters
+            for triple, metadata in related:
+                # Check entity filter if specified
+                if entity_name:
+                    triple_entity = metadata.get('entity', '')
+                    if triple_entity != entity_name and triple_entity:
+                        continue
+                
+                # Check speaker filter if specified
+                if speaker:
+                    triple_speaker = metadata.get('speaker', '')
+                    if triple_speaker != speaker and triple_speaker:
+                        continue
+                
+                # Entry passed all filters
+                filtered_related.append((triple, metadata))
+            
+            # Use filtered results
+            related = filtered_related
+            
+            # Log filter results
+            if entity_name:
+                self.logger.info(f"Filtered to {len(related)} triples matching entity '{entity_name}'")
+            if speaker:
+                self.logger.info(f"Filtered to {len(related)} triples from speaker '{speaker}'")
             
             query_time = time.time() - start_time
             self.logger.info(f"Found {len(related)} related triples in {query_time:.2f}s")
@@ -240,6 +285,7 @@ class ConversationProcessor:
                 'success': True,
                 'query': query,
                 'entity_name': entity_name,
+                'speaker': speaker,
                 'triples': related,
                 'triple_count': len(related),
                 'summary': summary,
@@ -255,6 +301,59 @@ class ConversationProcessor:
                 'error': str(e),
                 'query_time': time.time() - start_time
             }
+
+    def _create_entity_reference_triples(self, entity_references: Dict[str, str], timestamp: float):
+        """
+        Create reference triples that link different names for the same entity.
+        For example, if "user" is actually "Alex", create a triple (user, refers_to, Alex).
+        
+        Args:
+            entity_references: Dictionary mapping generic entities to specific names
+            timestamp: Timestamp for the triples
+        """
+        self.logger.info(f"Creating entity reference triples: {entity_references}")
+        
+        triples = []
+        metadata_list = []
+        
+        for generic_entity, specific_name in entity_references.items():
+            triple = (generic_entity, "refers_to", specific_name)
+            triples.append(triple)
+            
+            # Create metadata
+            metadata = {
+                "source": f"entity_resolution:{timestamp}",
+                "timestamp": timestamp,
+                "is_from_summary": False,
+                "subject_properties": {},
+                "verb_properties": {},
+                "object_properties": {},
+                "source_text": f"{generic_entity} refers to {specific_name}",
+                "speaker": "system"
+            }
+            metadata_list.append(metadata)
+            
+            # Also create the reverse mapping
+            triple_reverse = (specific_name, "is_referenced_by", generic_entity)
+            triples.append(triple_reverse)
+            
+            # Create metadata for reverse mapping
+            metadata_reverse = {
+                "source": f"entity_resolution:{timestamp}",
+                "timestamp": timestamp,
+                "is_from_summary": False,
+                "subject_properties": {},
+                "verb_properties": {},
+                "object_properties": {},
+                "source_text": f"{specific_name} is referenced by {generic_entity}",
+                "speaker": "system"
+            }
+            metadata_list.append(metadata_reverse)
+        
+        # Add the triples to the knowledge graph
+        if triples:
+            self.memory.kgraph.add_triples(triples, metadata_list)
+            self.logger.info(f"Added {len(triples)} entity reference triples")
 
 # Example usage
 if __name__ == "__main__":

@@ -35,7 +35,8 @@ class AssociativeSemanticMemory:
             except Exception as e:
                 logging.error(f"Could not close Qdrant client: {e}")
 
-    def ingest_text(self, text: str, source: str = "unknown", timestamp: Optional[float] = None) -> Dict:
+    def ingest_text(self, text: str, source: str = "unknown", timestamp: Optional[float] = None, 
+                   speaker: Optional[str] = None) -> Dict:
         """
         Process text through the associative semantic memory system:
         1. Generate summary
@@ -47,6 +48,7 @@ class AssociativeSemanticMemory:
             text: Input text to process
             source: Source of the information
             timestamp: Optional timestamp for when the information was received
+            speaker: Optional identifier for who generated this text
             
         Returns:
             dict: Results including summary and triples
@@ -61,12 +63,12 @@ class AssociativeSemanticMemory:
         
         # Extract triples from original text
         logging.debug("Extracting triples from original text")
-        original_triples = extract_triples_from_string(text, source=source, timestamp=timestamp)
+        original_triples = extract_triples_from_string(text, source=source, timestamp=timestamp, speaker=speaker)
         logging.info(f"Extracted {len(original_triples.get('triples', []))} triples from original text")
         
         # Extract triples from summary
         logging.debug("Extracting triples from summary")
-        summary_triples = extract_triples_from_string(summary, source=f"{source}_summary", timestamp=timestamp)
+        summary_triples = extract_triples_from_string(summary, source=f"{source}_summary", timestamp=timestamp, speaker=speaker)
         logging.info(f"Extracted {len(summary_triples.get('triples', []))} triples from summary")
         
         # Prepare triples and metadata for storage
@@ -82,6 +84,9 @@ class AssociativeSemanticMemory:
                 obj = triple_data["object"]["text"]
                 all_triples.append((subject, relationship, obj))
                 
+                # Get speaker from the triple if available, otherwise use the global speaker
+                triple_speaker = triple_data.get("speaker", original_triples.get("speaker", speaker))
+                
                 metadata = {
                     "source": source,
                     "timestamp": original_triples["timestamp"],
@@ -89,7 +94,8 @@ class AssociativeSemanticMemory:
                     "subject_properties": triple_data["subject"].get("properties", {}),
                     "verb_properties": triple_data["verb"].get("properties", {}),
                     "object_properties": triple_data["object"].get("properties", {}),
-                    "source_text": triple_data.get("source_text", "")
+                    "source_text": triple_data.get("source_text", ""),
+                    "speaker": triple_speaker  # Use the extracted speaker
                 }
                 metadata_list.append(metadata)
             except Exception as e:
@@ -106,6 +112,9 @@ class AssociativeSemanticMemory:
                 obj = triple_data["object"]["text"]
                 all_triples.append((subject, relationship, obj))
                 
+                # Get speaker from the triple if available, otherwise use the global speaker
+                triple_speaker = triple_data.get("speaker", summary_triples.get("speaker", speaker))
+                
                 metadata = {
                     "source": f"{source}_summary",
                     "timestamp": summary_triples["timestamp"],
@@ -113,7 +122,8 @@ class AssociativeSemanticMemory:
                     "subject_properties": triple_data["subject"].get("properties", {}),
                     "verb_properties": triple_data["verb"].get("properties", {}),
                     "object_properties": triple_data["object"].get("properties", {}),
-                    "source_text": triple_data.get("source_text", "")
+                    "source_text": triple_data.get("source_text", ""),
+                    "speaker": triple_speaker  # Use the extracted speaker
                 }
                 metadata_list.append(metadata)
             except Exception as e:
@@ -134,7 +144,8 @@ class AssociativeSemanticMemory:
             "summary_triples": summary_triples
         }
 
-    def query_related_information(self, text: str, include_summary_triples: bool = True) -> List:
+    def query_related_information(self, text: str, include_summary_triples: bool = True, 
+                                 follow_references: bool = True) -> List:
         """
         Query the knowledge graph for information related to the input text.
         Searches for connections through both subject and object endpoints of the query triples.
@@ -142,12 +153,14 @@ class AssociativeSemanticMemory:
         Args:
             text: Text to find related information for
             include_summary_triples: Whether to include triples from summaries
+            follow_references: Whether to follow entity reference links
             
         Returns:
             list: Related triples and their metadata, ordered by vector similarity
         """
         logging.info(f"Querying related information for: {text}")
         logging.debug(f"Include summary triples: {include_summary_triples}")
+        logging.debug(f"Follow references: {follow_references}")
         
         # Extract triples from query text
         logging.debug("Extracting triples from query text")
@@ -164,23 +177,49 @@ class AssociativeSemanticMemory:
                 subject = triple_data["subject"]["text"]
                 obj = triple_data["object"]["text"]
                 
-                logging.debug(f"Searching for connections through subject: {subject}")
-                # Search for connections through subject endpoint
-                subject_results = self.kgraph.build_graph_from_noun(
-                    subject,
-                    similarity_threshold=0.7,
-                    return_metadata=True
-                )
-                logging.info(f"Found {len(subject_results)} connections through subject")
+                # Get references if requested
+                subject_references = []
+                object_references = []
                 
-                logging.debug(f"Searching for connections through object: {obj}")
-                # Search for connections through object endpoint
-                object_results = self.kgraph.build_graph_from_noun(
-                    obj,
-                    similarity_threshold=0.7,
-                    return_metadata=True
-                )
-                logging.info(f"Found {len(object_results)} connections through object")
+                if follow_references:
+                    # Find references for subjects
+                    subject_references = self._get_entity_references(subject)
+                    logging.debug(f"Found references for subject '{subject}': {subject_references}")
+                    
+                    # Find references for objects
+                    object_references = self._get_entity_references(obj)
+                    logging.debug(f"Found references for object '{obj}': {object_references}")
+                
+                # Combine original and references
+                all_subjects = [subject] + subject_references
+                all_objects = [obj] + object_references
+                
+                subject_results = []
+                object_results = []
+                
+                # Search for all subjects
+                for subj in all_subjects:
+                    logging.debug(f"Searching for connections through subject: {subj}")
+                    # Search for connections through subject endpoint
+                    results = self.kgraph.build_graph_from_noun(
+                        subj,
+                        similarity_threshold=0.7,
+                        return_metadata=True
+                    )
+                    subject_results.extend(results)
+                    logging.info(f"Found {len(results)} connections through subject '{subj}'")
+                
+                # Search for all objects
+                for obj_item in all_objects:
+                    logging.debug(f"Searching for connections through object: {obj_item}")
+                    # Search for connections through object endpoint
+                    results = self.kgraph.build_graph_from_noun(
+                        obj_item,
+                        similarity_threshold=0.7,
+                        return_metadata=True
+                    )
+                    object_results.extend(results)
+                    logging.info(f"Found {len(results)} connections through object '{obj_item}'")
                 
                 # Combine results
                 results = subject_results + object_results
@@ -196,17 +235,66 @@ class AssociativeSemanticMemory:
                         "original_query": text,
                         "query_subject": subject,
                         "query_object": obj,
-                        "connected_through": "subject" if subject.lower() in str(triple).lower() else "object"
+                        "connected_through": "subject" if any(s.lower() in str(triple).lower() for s in all_subjects) else "object"
                     }
-                    related_triples.append((triple, metadata))
-            
+                    
+                # Add to overall results
+                related_triples.extend(results)
+                
             except Exception as e:
                 logging.error(f"Error processing query triple: {e}")
-                logging.debug(f"Query triple data: {triple_data}")
+                logging.debug(f"Triple data: {triple_data}")
                 continue
         
-        logging.info(f"Found {len(related_triples)} related triples")
-        return related_triples
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_related_triples = []
+        for t, m in related_triples:
+            triple_str = str(t)
+            if triple_str not in seen:
+                seen.add(triple_str)
+                unique_related_triples.append((t, m))
+        
+        logging.info(f"Found {len(unique_related_triples)} related triples")
+        return unique_related_triples
+        
+    def _get_entity_references(self, entity: str) -> List[str]:
+        """
+        Get all entity references for a given entity.
+        
+        Args:
+            entity: The entity to find references for
+            
+        Returns:
+            List of referenced entities
+        """
+        references = []
+        
+        # Find direct references (entity "refers_to" X)
+        direct_refs = self.kgraph.build_graph_from_subject_relationship(
+            (entity, "refers_to"),
+            similarity_threshold=0.8,
+            return_metadata=False
+        )
+        
+        # Extract objects from direct references
+        for s, r, o in direct_refs:
+            if s.lower() == entity.lower() and r.lower() == "refers_to":
+                references.append(o)
+        
+        # Find reverse references (X "is_referenced_by" entity)
+        reverse_refs = self.kgraph.build_graph_from_subject_relationship(
+            (entity, "is_referenced_by"),
+            similarity_threshold=0.8,
+            return_metadata=False
+        )
+        
+        # Extract subjects from reverse references
+        for s, r, o in reverse_refs:
+            if o.lower() == entity.lower() and r.lower() == "is_referenced_by":
+                references.append(s)
+        
+        return list(set(references))  # Remove duplicates
 
     def summarize_results(self, results: List[Tuple]) -> str:
         """

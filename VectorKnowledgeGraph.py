@@ -188,18 +188,29 @@ class VectorKnowledgeGraph:
         Query triples based on metadata criteria.
         
         Args:
-            metadata_criteria: Dictionary of metadata fields and values to match
+            metadata_criteria: Dictionary of metadata fields and values to match.
+                               Can include fields like 'speaker', 'entity', 'is_from_summary'
         """
         logging.info(f"Querying triples with metadata criteria: {metadata_criteria}")
         # Build filter condition
         filter_conditions = []
         for key, value in metadata_criteria.items():
-            filter_conditions.append(
-                models.FieldCondition(
-                    key=f"metadata.{key}",
-                    match=models.MatchValue(value=value)
+            # Handle special cases for common fields
+            if key in ['speaker', 'entity', 'is_from_summary']:
+                filter_conditions.append(
+                    models.FieldCondition(
+                        key=f"metadata.{key}",
+                        match=models.MatchValue(value=value)
+                    )
                 )
-            )
+            else:
+                # For nested metadata fields
+                filter_conditions.append(
+                    models.FieldCondition(
+                        key=f"metadata.{key}",
+                        match=models.MatchValue(value=value)
+                    )
+                )
         
         filter_condition = models.Filter(
             must=filter_conditions
@@ -214,9 +225,16 @@ class VectorKnowledgeGraph:
             limit=1000
         )
         
-        logging.info(f"Found {len(results[0])} triples matching metadata criteria")
-        return [(hit.payload["subject"], hit.payload["relationship"], hit.payload["object"]) 
-                for hit in results[0]]
+        # Return triples with complete metadata
+        triples_with_metadata = []
+        for hit in results[0]:
+            payload = hit.payload
+            triple = (payload["subject"], payload["relationship"], payload["object"])
+            metadata = payload.get("metadata", {})
+            triples_with_metadata.append((triple, metadata))
+        
+        logging.info(f"Found {len(triples_with_metadata)} triples matching metadata criteria")
+        return triples_with_metadata
 
     def get_all_triples(self):
         """
@@ -512,8 +530,8 @@ def main():
         logging.info("Testing metadata query (source='biology_textbook')")
         results = kgraph.query_triples_from_metadata({"source": "biology_textbook"})
         logging.info("Found triples:")
-        for triple in results:
-            logging.info(triple)
+        for triple, metadata in results:
+            logging.info(f"{triple} - Metadata: {metadata}")
         
         # Test visualization with multiple starting points
         logging.info("Testing visualization with multiple starting points...")
