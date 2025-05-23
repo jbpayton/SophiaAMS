@@ -120,15 +120,13 @@ if __name__ == "__main__":
     Media, Inc.. She was initially released in August 2007 for the VOCALOID2 engine and was the first member of the Character Vocal 
     Series. She was the seventh VOCALOID overall, as well as the second VOCALOID2 vocal released to be released for the engine. Her 
     voice is provided by the Japanese voice actress Saki Fujita (藤田咲, Fujita Saki)
-
-    When KEI illustrated Miku, he was given a color scheme to work with (based on the YAMAHA synthesizers' signature blue-green colour) 
-    and was asked to draw Miku as an android. Crypton also provided KEI with Miku's detailed concepts, however, Crypton said it was not 
-    easy to explain what a "Vocaloid" was to him. KEI said he could not create an image of a "singing computer" at first, as he did not 
-    even know what a "synthesizer" was. It took him more than a month to complete the commission.
     """
     
     # Extract triples
+    start_time = time.time()
     extracted_triples = extract_triples_from_string(sample_text)
+    end_time = time.time()
     
     # Pretty print the result
     print(json.dumps(extracted_triples, indent=2)) 
+    print(f"Time taken: {end_time - start_time} seconds")

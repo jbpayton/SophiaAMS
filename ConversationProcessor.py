@@ -53,11 +53,7 @@ class ConversationProcessor:
         global_timestamp = timestamp or time.time()
         
         total_messages = len(messages)
-        processed_messages = 0
-        failed_messages = 0
-        results = []
-        
-        self.logger.info(f"Starting to process {total_messages} messages")
+        self.logger.info(f"Starting to process conversation with {total_messages} messages")
         
         # Extract system message if present
         system_message = None
@@ -77,141 +73,85 @@ class ConversationProcessor:
         # Track entity names for reference resolution
         entity_references = {}
         
-        # Process each message
+        # First, combine all messages with speaker information
+        combined_text = ""
+        filtered_messages = []
+        
         for i, message in enumerate(messages):
-            # Skip system messages in the main processing loop
+            # Skip system messages
             if message['role'] == 'system':
                 continue
                 
-            try:
-                msg_start = time.time()
-                role = message['role']
-                content = message['content']
+            # Determine the entity for this message
+            role = message['role']
+            content = message['content']
+            msg_entity = entity_name if role == 'assistant' else 'user'
+            
+            # If there's a name field in the message, use that
+            if 'name' in message and message['name']:
+                msg_entity = message['name']
                 
-                # Get the appropriate timestamp for this message
-                msg_timestamp = global_timestamp
-                if message_timestamps and i in message_timestamps:
-                    msg_timestamp = message_timestamps[i]
-                
-                # Determine the entity for this message
-                msg_entity = entity_name if role == 'assistant' else 'user'
-                
-                # If there's a name field in the message, use that
-                if 'name' in message and message['name']:
-                    msg_entity = message['name']
-                    
-                    # Track this entity reference for later resolution
-                    if role == 'user' and msg_entity != 'user':
-                        entity_references['user'] = msg_entity
-                    elif role == 'assistant' and msg_entity != 'assistant':
-                        entity_references['assistant'] = msg_entity
-                
-                self.logger.info(f"Processing message {i+1}/{total_messages} from {role}")
-                self.logger.debug(f"Message {i+1} content:\n---\n{content}\n---")
-                
-                # Create source identifier for the message
-                source = f"conversation:{global_timestamp}:message:{i}:{role}"
-                
-                # Add message context metadata
-                metadata = {
-                    'conversation_timestamp': global_timestamp,
-                    'message_index': i,
-                    'role': role,
-                    'entity': msg_entity,
-                    'speaker': msg_entity  # Add explicit speaker field
-                }
-                
-                # Process message with the memory system
-                result = self.memory.ingest_text(
-                    text=content,
-                    source=source,
-                    timestamp=msg_timestamp,
-                    speaker=msg_entity  # Pass speaker to ingest_text
-                )
-
-                # Add entity and metadata to the result for our tracking
-                result['entity'] = msg_entity
-                result['additional_metadata'] = metadata
-                
-                results.append(result)
-                processed_messages += 1
-                
-                msg_time = time.time() - msg_start
-                self.logger.info(f"Successfully processed message {i+1} in {msg_time:.2f}s")
-                
-                # Log extracted triples
-                original_extracted = result.get('original_triples', {}).get('triples', [])
-                summary_extracted = result.get('summary_triples', {}).get('triples', [])
-                self.logger.debug(f"Message {i+1} original triples ({len(original_extracted)}): {original_extracted}")
-                self.logger.debug(f"Message {i+1} summary triples ({len(summary_extracted)}): {summary_extracted}")
-                
-            except Exception as e:
-                failed_messages += 1
-                self.logger.error(f"Error processing message {i+1}: {str(e)}")
-                self.logger.debug("Error details:", exc_info=True)
-                continue
+                # Track this entity reference for later resolution
+                if role == 'user' and msg_entity != 'user':
+                    entity_references['user'] = msg_entity
+                elif role == 'assistant' and msg_entity != 'assistant':
+                    entity_references['assistant'] = msg_entity
+            
+            # Format the message with speaker information
+            formatted_message = f"SPEAKER:{msg_entity}|{content}\n\n"
+            combined_text += formatted_message
+            
+            # Keep track of the filtered messages
+            filtered_messages.append({
+                'index': i,
+                'role': role,
+                'content': content,
+                'entity': msg_entity,
+                'timestamp': message_timestamps.get(i, global_timestamp) if message_timestamps else global_timestamp
+            })
+        
+        # Process the entire conversation at once
+        try:
+            source = f"conversation:{global_timestamp}:complete"
+            
+            # Process combined text with the memory system
+            result = self.memory.ingest_text(
+                text=combined_text,
+                source=source,
+                timestamp=global_timestamp
+            )
+            
+            # Add metadata to the result
+            result['success'] = True
+            result['filtered_messages'] = filtered_messages
+            result['entity_references'] = entity_references
+            result['conversation_context'] = conversation_context
+            result['processed_messages'] = len(filtered_messages)
+            result['processing_time'] = time.time() - start_time
+            
+            # Log extracted triples
+            original_extracted = result.get('original_triples', {}).get('triples', [])
+            summary_extracted = result.get('summary_triples', {}).get('triples', [])
+            self.logger.info(f"Processed {len(filtered_messages)} messages in {result['processing_time']:.2f}s")
+            self.logger.debug(f"Conversation original triples ({len(original_extracted)}): {original_extracted}")
+            self.logger.debug(f"Conversation summary triples ({len(summary_extracted)}): {summary_extracted}")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error processing conversation: {str(e)}")
+            self.logger.debug("Error details:", exc_info=True)
+            
+            return {
+                'success': False,
+                'error': str(e),
+                'metadata': conversation_context,
+                'processing_time': time.time() - start_time
+            }
         
         # Process entity references to create links between different names
         if entity_references:
             self._create_entity_reference_triples(entity_references, global_timestamp)
-        
-        total_time = time.time() - start_time
-        self.logger.info(f"Completed processing {processed_messages}/{total_messages} messages in {total_time:.2f}s")
-        
-        if failed_messages:
-            self.logger.warning(f"Failed to process {failed_messages} messages")
-        
-        # Optionally, ingest the entire conversation as a single entity
-        # This could be useful for capturing the overall context
-        try:
-            if processed_messages > 0:
-                # Create a version of the conversation with speaker information
-                full_conversation_with_speakers = []
-                for msg in messages:
-                    if msg['role'] != 'system':
-                        speaker = msg.get('name', msg['role'])
-                        content = msg['content']
-                        full_conversation_with_speakers.append(f"SPEAKER:{speaker}|{content}")
-                
-                full_conversation = "\n\n".join(full_conversation_with_speakers)
-                
-                # Create a summary of the conversation
-                conversation_source = f"conversation:{global_timestamp}:summary"
-                
-                # Ingest the full conversation as a single text
-                conversation_result = self.memory.ingest_text(
-                    text=full_conversation,
-                    source=conversation_source,
-                    timestamp=global_timestamp
-                )
-                
-                # Add entity and metadata for tracking
-                conversation_result['entity'] = entity_name
-                conversation_result['additional_metadata'] = {
-                    'type': 'conversation_summary',
-                    'entity_name': entity_name,
-                    'message_count': total_messages,
-                    'system_message': system_message,
-                    'entity_references': entity_references
-                }
-                
-                self.logger.info(f"Processed full conversation summary")
-                
-                # Add to results
-                conversation_context['conversation_summary_result'] = conversation_result
-        except Exception as e:
-            self.logger.error(f"Error processing conversation summary: {str(e)}")
-            self.logger.debug("Error details:", exc_info=True)
-        
-        return {
-            'success': True,
-            'processed_messages': processed_messages,
-            'failed_messages': failed_messages,
-            'total_messages': total_messages,
-            'processing_time': total_time,
-            'conversation_context': conversation_context,
-            'results': results
-        }
     
     def query_conversation_memory(self, query: str, entity_name: str = None, 
                                  limit: int = 10, min_confidence: float = 0.6,

@@ -10,59 +10,76 @@ Critical rules:
    - Use "has" for possession and attributes
    - Use "was" for past states and events
    - Use "created" or "developed" for creation events
-   - NEVER use "was" with ordinal information (e.g., "was the seventh" should be "is" with "position": "seventh" in object properties)
-   - Place only adverbial modifiers in verb properties (describing how/when/where the action happens):
-     * Manner: "quickly", "carefully", "eagerly"
-     * Time: "yesterday", "in 2020", "during summer"
-     * Location: "in the park", "at home", "on the table"
-     * Frequency: "daily", "weekly", "occasionally"
-     * Degree: "completely", "partially", "mostly"
+   - NEVER combine ordinal information with verbs (e.g., "was the seventh" should be "is" with modifier in object)
+   - Place ONLY adverbial modifiers in verb modifiers (describing how/when/where the action happens):
+     * Manner: "manner": "quickly", "carefully", "eagerly"
+     * Time: "time": "yesterday", "in 2020", "during summer"
+     * Location: "location": "in the park", "at home", "on the table"
+     * Frequency: "frequency": "daily", "weekly", "occasionally"
+     * Degree: "degree": "completely", "partially", "mostly"
 
 2. Entity attributes:
-   - Place descriptive adjectives in the properties of the subject or object:
-     * Physical properties: "color": "blue", "size": "large", "shape": "round"
+   - ALWAYS place adjectival phrases and descriptive terms in modifiers:
+     * Physical qualities: "color": "blue", "size": "large", "shape": "round"
      * Material: "material": "wood", "metal", "plastic"
      * Age: "age": "new", "old", "ancient"
      * Condition: "condition": "broken", "worn", "pristine"
      * Purpose: "purpose": "decorative", "functional", "ceremonial"
-     * Position/Order: "position": "second", "order": "first"
-     * Source/Origin: "provided_by": "artist", "created_by": "company"
+     * Ordinal position: "position": "first", "second", "seventh"
+     * Source/Origin: "source": "artist", "creator": "company"
      * Type/Classification: "type": "vehicle", "category": "transportation"
      * Version/Model: "version": "2.0", "model": "2020"
      * Role/Form: "role": "android", "form": "humanoid", "appearance": "gothic"
-   - Keep noun phrases intact but extract descriptive modifiers as properties
-   - Include entity types in properties (e.g., "type": "vehicle", "category": "transportation")
+   - Keep the main noun intact in the text field but extract ALL descriptive modifiers as modifiers
+   - Use modifier names that are linguistically appropriate for each modifier type
 
 3. Temporal and contextual information:
-   - Include time periods in verb properties (e.g., "time": "2020", "period": "summer")
-   - Include ordinal information in object properties (e.g., "order": "first", "position": "second")
-   - Include source information in object properties when relevant
-   - Include duration in properties (e.g., "duration": "2 hours", "lifespan": "5 years")
+   - Include time periods as modifiers (e.g., "time": "2020", "period": "summer")
+   - Include ordinal information as modifiers (e.g., "order": "first", "position": "seventh")
+   - For statements like "was the first X", use verb "is" with a modifier {{"position": "first"}}
+   - Include source information when relevant as a modifier
 
 4. For ALL triples:
    - NEVER leave the object empty - if no clear object exists, use "unknown" or "unspecified"
-   - Place all modifiers in appropriate properties
-   - Use consistent formatting throughout
-   - Ensure each triple is atomic and complete
-   - Combine related information into single triples when possible
-   - Extract all possible properties from the text
+   - EXTRACT ALL DESCRIPTIVE ELEMENTS as modifiers, never leave them in the main text fields
+   - The text fields should contain only the core nouns/verbs without modifiers
+   - Split complex statements into multiple atomic triples when needed
 
-Example of correct role handling:
-Input: "asked to draw person as a teacher"
+Example of correct handling:
+Input: "Hatsune Miku was the first member of the Character Vocal Series"
 Output:
 {{
   "subject": {{
-    "text": "artist",
-    "properties": {{}}
+    "text": "Hatsune Miku",
+    "modifiers": {{}}
   }},
   "verb": {{
-    "text": "asked_to_draw",
-    "properties": {{}}
+    "text": "is",
+    "modifiers": {{}}
   }},
   "object": {{
-    "text": "person",
-    "properties": {{
-      "role": "teacher"
+    "text": "member",
+    "modifiers": {{
+      "position": "first",
+      "of": "Character Vocal Series"
+    }}
+  }}
+}}
+
+INCORRECT usage (avoid this):
+{{
+  "subject": {{
+    "text": "Hatsune Miku",
+    "modifiers": {{}}
+  }},
+  "verb": {{
+    "text": "was",
+    "modifiers": {{}}
+  }},
+  "object": {{
+    "text": "Character_Vocal_Series",
+    "modifiers": {{
+      "first_member": true
     }}
   }}
 }}
@@ -73,15 +90,15 @@ Output as JSON following this exact structure:
     {{
       "subject": {{
         "text": "entity",
-        "properties": {{}}
+        "modifiers": {{}}
       }},
       "verb": {{
         "text": "relation",
-        "properties": {{}}
+        "modifiers": {{}}
       }},
       "object": {{
         "text": "target",
-        "properties": {{}}
+        "modifiers": {{}}
       }},
       "source_text": "exact_text_from_document"
     }}
@@ -97,15 +114,16 @@ Guidelines:
 1. Convert first-person statements (I, me, my) to use "user" as the subject
 2. Convert questions into statement form
 3. Extract the core relationship being expressed
-4. Keep the original query text in the source_text field
+4. Keep the original query text in the source_text field (no longer than a sentence or two)
+5. Keep the context of the original text into account when extracting the triples.
 
 Output format:
 {{
     "triples": [
         {{
-            "subject": {{"text": "subject_text", "properties": {{}}}},
-            "verb": {{"text": "verb_text", "properties": {{}}}},
-            "object": {{"text": "object_text", "properties": {{}}}},
+            "subject": {{"text": "subject_text", "modifiers": {{}}}},
+            "verb": {{"text": "verb_text", "modifiers": {{}}}},
+            "object": {{"text": "object_text", "modifiers": {{}}}},
             "source_text": "original_query_text"
         }}
     ]

@@ -10,25 +10,25 @@ TRIPLE_EXTRACTION_SCHEMA = {
                         "type": "object",
                         "properties": {
                             "text": {"type": "string"},
-                            "properties": {"type": "object"}
+                            "modifiers": {"type": "object"}
                         },
-                        "required": ["text", "properties"]
+                        "required": ["text", "modifiers"]
                     },
                     "verb": {
                         "type": "object",
                         "properties": {
                             "text": {"type": "string"},
-                            "properties": {"type": "object"}
+                            "modifiers": {"type": "object"}
                         },
-                        "required": ["text", "properties"]
+                        "required": ["text", "modifiers"]
                     },
                     "object": {
                         "type": "object",
                         "properties": {
                             "text": {"type": "string"},
-                            "properties": {"type": "object"}
+                            "modifiers": {"type": "object"}
                         },
-                        "required": ["text", "properties"]
+                        "required": ["text", "modifiers"]
                     },
                     "source_text": {"type": "string"}
                 },
