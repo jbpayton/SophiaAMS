@@ -38,15 +38,11 @@ class AssociativeSemanticMemory:
     def ingest_text(self, text: str, source: str = "unknown", timestamp: Optional[float] = None, 
                    speaker: Optional[str] = None) -> Dict:
         """
-        Process text through the associative semantic memory system:
-        1. Generate summary
-        2. Extract triples from original text
-        3. Extract triples from summary
-        4. Store all triples in knowledge graph with metadata
+        Process text by generating summary and extracting triples.
         
         Args:
             text: Input text to process
-            source: Source of the information
+            source: Source identifier for the text
             timestamp: Optional timestamp for when the information was received
             speaker: Optional identifier for who generated this text
             
@@ -56,6 +52,13 @@ class AssociativeSemanticMemory:
         logging.info(f"Processing text from source: {source}")
         logging.debug(f"Text length: {len(text)} characters")
         
+        # Detect if this is a conversation based on source or content
+        is_conversation = (
+            "conversation" in source.lower() or 
+            "SPEAKER:" in text or
+            speaker is not None
+        )
+        
         # Generate summary
         logging.debug("Generating summary")
         summary = self.summarizer.generate_summary(text)
@@ -63,12 +66,24 @@ class AssociativeSemanticMemory:
         
         # Extract triples from original text
         logging.debug("Extracting triples from original text")
-        original_triples = extract_triples_from_string(text, source=source, timestamp=timestamp, speaker=speaker)
+        original_triples = extract_triples_from_string(
+            text, 
+            source=source, 
+            timestamp=timestamp, 
+            speaker=speaker,
+            is_conversation=is_conversation
+        )
         logging.info(f"Extracted {len(original_triples.get('triples', []))} triples from original text")
         
         # Extract triples from summary
         logging.debug("Extracting triples from summary")
-        summary_triples = extract_triples_from_string(summary, source=f"{source}_summary", timestamp=timestamp, speaker=speaker)
+        summary_triples = extract_triples_from_string(
+            summary, 
+            source=f"{source}_summary", 
+            timestamp=timestamp, 
+            speaker=speaker,
+            is_conversation=is_conversation
+        )
         logging.info(f"Extracted {len(summary_triples.get('triples', []))} triples from summary")
         
         # Prepare triples and metadata for storage

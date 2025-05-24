@@ -1,0 +1,278 @@
+{
+  "results": [
+    {
+      "query": "What is Alex's birthday?",
+      "expected_keywords": [
+        "September 3",
+        "September 3rd"
+      ],
+      "triple_count": 5,
+      "summary": "Alex leads a wonderfully diverse and fulfilling life. He\u2019s currently deeply engrossed in a woodworking hobby, meticulously crafting beautiful furniture pieces, while simultaneously enjoying the sounds of his favorite artist\u2019s music. Beyond his hands-on projects, Alex also cultivates his mind by reading books authored by talented writers, and he\u2019s actively preparing for an upcoming barbecue event \u2013 clearly enjoying a good activity and project!",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "September 3",
+          "September 3rd"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What is Sophia's birthday?",
+      "expected_keywords": [
+        "December 22",
+        "December 22nd"
+      ],
+      "triple_count": 4,
+      "summary": "Here's a paragraph combining all the provided information into a cohesive and flowing piece:\n\nSophia, who celebrates her birthday on [birthday], is a creative soul with a deep appreciation for various forms of expression. She spends her time creating beautiful artwork, often inspired by the books she reads \u2013 currently she\u2019s engrossed in [book] by [author]. Beyond her artistic pursuits, Sophia also enjoys immersing herself in music, finding solace and inspiration within its melodies.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "December 22",
+          "December 22nd"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What type of music does Alex like?",
+      "expected_keywords": [
+        "reggae",
+        "Bob Marley"
+      ],
+      "triple_count": 5,
+      "summary": "Alex leads a fulfilling and varied life filled with creative pursuits. He spends his time engaging in the satisfying hobby of woodworking furniture, while also finding solace and inspiration through listening to diverse artist music and reading captivating author books. Beyond his individual passions, Alex is actively involved in preparing for an upcoming barbecue event, showcasing his enthusiasm for social gatherings. Ultimately, he truly enjoys tackling a new project \u2013 whether it\u2019s building a piece of furniture or organizing the perfect backyard party \u2013 demonstrating a consistent zest for activity and making things happen.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "reggae",
+          "Bob Marley"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What type of music does Sophia like?",
+      "expected_keywords": [
+        "classical",
+        "folk",
+        "Chopin",
+        "Joni Mitchell",
+        "Leonard Cohen",
+        "blues"
+      ],
+      "triple_count": 4,
+      "summary": "Sophia is a multifaceted individual with a vibrant life filled with passions. She celebrates her birthday on [birthday], and during her free time, she dedicates herself to creating beautiful artwork. Beyond her creative pursuits, Sophia also enjoys immersing herself in the written word, frequently reading books by her favorite author, [book]. And of course, no day is complete without enjoying some music \u2013 Sophia has a particular fondness for [music].",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "classical",
+          "folk",
+          "Chopin",
+          "Joni Mitchell",
+          "Leonard Cohen",
+          "blues"
+        ],
+        "total_expected": 6,
+        "details": "Found 0/6 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What does Alex like to cook?",
+      "expected_keywords": [
+        "fish tacos",
+        "Mexican",
+        "Mexican food"
+      ],
+      "triple_count": 5,
+      "summary": "Alex leads a richly layered life filled with diverse interests. He finds solace and creativity in his hobby of woodworking furniture, meticulously crafting beautiful pieces. When he\u2019s not working with wood, Alex can be found listening to the evocative sounds of a particular artist\u2019s music or deeply immersed in a captivating author's book.  He also enjoys planning and preparing for events, most recently by organizing a lively barbecue \u2013 truly showcasing his enthusiasm for engaging activities and personal projects.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "fish tacos",
+          "Mexican",
+          "Mexican food"
+        ],
+        "total_expected": 3,
+        "details": "Found 0/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What food does Sophia prefer?",
+      "expected_keywords": [
+        "Italian",
+        "pasta",
+        "tomatoes",
+        "garlic"
+      ],
+      "triple_count": 4,
+      "summary": "Here's a paragraph combining all the provided information, aiming for a natural flow:\n\nSophia is a multifaceted individual with a passion for creativity and intellectual pursuits. She celebrates her birthday on [birthday], spends her time creating beautiful artwork, enjoys losing herself in the worlds of her favorite books \u2013 currently she\u2019s engrossed in [book] by [author], and finds solace and inspiration in listening to diverse genres of music.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "Italian",
+          "pasta",
+          "tomatoes",
+          "garlic"
+        ],
+        "total_expected": 4,
+        "details": "Found 0/4 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What are Alex's hobbies?",
+      "expected_keywords": [
+        "surfing",
+        "woodworking",
+        "furniture"
+      ],
+      "triple_count": 5,
+      "summary": "Alex leads a wonderfully multifaceted life. He finds joy in engaging in his hobby of woodworking, crafting beautiful furniture with meticulous care. When he\u2019s not working with wood, he\u2019s likely listening to the evocative sounds of a favorite artist\u2019s music or engrossed in a captivating author's book.  He also enjoys planning and preparing for events, most recently by organizing a lively barbecue \u2013 truly demonstrating his passion for creating enjoyable projects and experiences.",
+      "score_info": {
+        "score": 0.6666666666666666,
+        "found_keywords": [
+          "woodworking",
+          "furniture"
+        ],
+        "missing_keywords": [
+          "surfing"
+        ],
+        "total_expected": 3,
+        "details": "Found 2/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What are Sophia's hobbies?",
+      "expected_keywords": [
+        "painting",
+        "watercolors",
+        "writing",
+        "rock climbing"
+      ],
+      "triple_count": 4,
+      "summary": "Here's a paragraph combining all the provided information into a cohesive whole:\n\nSophia, who celebrates her birthday on [birthday], is a creative soul with a deep appreciation for various forms of expression. She spends her time creating beautiful artwork and enjoys immersing herself in stories by reading books authored by [author]. Beyond that, Sophia finds solace and inspiration in music \u2013 she truly loves listening to it!",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "painting",
+          "watercolors",
+          "writing",
+          "rock climbing"
+        ],
+        "total_expected": 4,
+        "details": "Found 0/4 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What authors does Sophia read?",
+      "expected_keywords": [
+        "Emily Dickinson",
+        "Virginia Woolf"
+      ],
+      "triple_count": 4,
+      "summary": "Sophia is a multifaceted individual with a vibrant inner life. She celebrates her birthday on [birthday], and spends much of her time creating beautiful artwork, often inspired by the books she reads \u2013 currently, she\u2019s engrossed in [book] by [author]. Beyond her creative pursuits, Sophia also finds solace and joy in listening to music, immersing herself in a wide range of genres that perfectly complement her artistic spirit.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "Emily Dickinson",
+          "Virginia Woolf"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What does Sophia paint?",
+      "expected_keywords": [
+        "watercolors",
+        "sunset"
+      ],
+      "triple_count": 4,
+      "summary": "Here\u2019s a paragraph combining all the provided information into a coherent flow:\n\nSophia, who celebrates her birthday on [birthday], is a creative soul with a deep appreciation for various forms of expression. She spends her time creating beautiful artwork and enjoys losing herself in the worlds crafted by her favorite authors \u2013 currently she's deeply engrossed in [book]. Beyond her artistic pursuits, Sophia also finds solace and joy in listening to music, exploring diverse genres and melodies that resonate with her.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "watercolors",
+          "sunset"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "When are both Alex and Sophia's birthdays?",
+      "expected_keywords": [
+        "September 3",
+        "December 22"
+      ],
+      "triple_count": 9,
+      "summary": "Sophia and Alex are both quite creative individuals; Sophia enjoys music deeply, and she also creates beautiful artwork. Alex, on the other hand, engages in a fulfilling hobby of woodworking furniture, often listening to his favorite artist\u2019s music. He also has a passion for reading, recently finishing a book by a particular author, and he's currently preparing for a barbecue event. Interestingly, Sophia\u2019s birthday is just around the corner, and she\u2019s always working on a new project \u2013 whether it\u2019s another piece of artwork or simply enjoying her music!",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "September 3",
+          "December 22"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What do Alex and Sophia both enjoy that's creative?",
+      "expected_keywords": [
+        "music",
+        "woodworking",
+        "painting",
+        "writing",
+        "creative"
+      ],
+      "triple_count": 9,
+      "summary": "Here\u2019s a paragraph combining all the provided details into a cohesive narrative:\n\nSophia, who loves music and creates beautiful artwork, has a birthday coming up. Meanwhile, Alex is quite busy \u2013 he engages in woodworking furniture, listening to his favorite artist\u2019s music, and preparing for an upcoming barbecue event. He also enjoys tackling various projects and recently finished reading a compelling book by a particular author, which he then shared with Sophia.",
+      "score_info": {
+        "score": 0.4,
+        "found_keywords": [
+          "music",
+          "woodworking"
+        ],
+        "missing_keywords": [
+          "painting",
+          "writing",
+          "creative"
+        ],
+        "total_expected": 5,
+        "details": "Found 2/5 expected keywords"
+      },
+      "confidence_scores": []
+    }
+  ],
+  "total_score": 1.0666666666666667,
+  "average_score": 0.08888888888888889,
+  "perfect_scores": 0,
+  "zero_scores": 10,
+  "grade": "F",
+  "query_count": 12
+}

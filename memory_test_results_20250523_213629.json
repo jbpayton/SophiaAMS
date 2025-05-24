@@ -1,0 +1,282 @@
+{
+  "results": [
+    {
+      "query": "What is Alex's birthday?",
+      "expected_keywords": [
+        "September 3",
+        "September 3rd"
+      ],
+      "triple_count": 14,
+      "summary": "Alex, who\u2019s celebrating his birthday on September 3rd, is currently juggling several exciting projects and passions. He\u2019s just finished building a beautiful coffee table \u2013 he really enjoys woodworking \u2013 and is meticulously working on a Bob Marley playlist, especially enjoying the artist himself.  He\u2019s also planning a barbecue and preparing to make delicious fish tacos! As a huge fan of reggae music, Alex often listens to playlists featuring artists like Bob Marley, and currently has one dedicated to the legendary musician. Beyond his musical tastes, he loves surfing and continues to hone his woodworking skills, having recently completed a coffee table project.  Right now, he\u2019s also engrossed in a book by Emily Dickinson, adding another layer to his multifaceted interests.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "September 3",
+          "September 3rd"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What is Sophia's birthday?",
+      "expected_keywords": [
+        "December 22",
+        "December 22nd"
+      ],
+      "triple_count": 24,
+      "summary": "Sophia is currently immersed in several creative pursuits and looking forward to celebrating her birthday on December 22nd. She\u2019s planning a festive birthday celebration, perhaps enjoying some Italian cuisine while reminiscing about favorite authors like Virginia Woolf, whom she deeply admires and frequently revisits alongside Emily Dickinson for inspiration. Sophia also loves crafting short stories and painting watercolor sunsets \u2013 often inspired by the beautiful scenes she captures. Her musical tastes are eclectic, ranging from folk music championed by Joni Mitchell and Leonard Cohen to classical pieces, and she\u2019s currently enjoying listening to Mitchell again while pondering a delicious fish taco recipe. Beyond her artistic endeavors, Sophia is an avid rock climber and occasionally cooks up a comforting dish of pasta with tomatoes and garlic, always appreciating the thoughtful lyrics of Joni Mitchell and the evocative prose of Virginia Woolf.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "December 22",
+          "December 22nd"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What type of music does Alex like?",
+      "expected_keywords": [
+        "reggae",
+        "Bob Marley"
+      ],
+      "triple_count": 14,
+      "summary": "Alex, who celebrates his birthday on September 3rd, is currently deep into several projects and passions. He\u2019s just finished building a beautiful coffee table \u2013 he really enjoys woodworking \u2013 and is meticulously working on a Bob Marley playlist, especially appreciating the artist's music and particularly enjoying tracks by Bob Marley.  He\u2019s also planning a barbecue and preparing for it, with plans to make delicious fish tacos! Alex is a big fan of reggae music, often listening to his beloved Bob Marley, and he regularly enjoys surfing as well as continuing his woodworking hobby. Currently, he's engrossed in reading poetry by Emily Dickinson, adding another layer to his multifaceted interests.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "reggae",
+          "Bob Marley"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What type of music does Sophia like?",
+      "expected_keywords": [
+        "classical",
+        "folk",
+        "Chopin",
+        "Joni Mitchell",
+        "Leonard Cohen",
+        "blues"
+      ],
+      "triple_count": 24,
+      "summary": "Sophia is currently juggling several creative pursuits and anticipating a busy few weeks. She's planning to make delicious fish tacos for an upcoming birthday celebration, a party she\u2019s particularly looking forward to \u2013 her birthday on December 22nd! Sophia enjoys a diverse range of artistic endeavors, from painting watercolor sunsets, inspired by the evocative works of Virginia Woolf and Emily Dickinson, to writing short stories.  She also loves rock climbing and is a big fan of folk music, specifically artists like Joni Mitchell and Leonard Cohen, often listening to them while she revisits Virginia Woolf\u2019s novels or simply enjoys a comforting dish of pasta with tomatoes and garlic \u2013 sometimes inspired by the rich prose of Woolf herself. Beyond her personal passions, Sophia appreciates classical music and has a fondness for Italian cuisine, and it seems she's determined to celebrate birthdays in style!",
+      "score_info": {
+        "score": 0.6666666666666666,
+        "found_keywords": [
+          "classical",
+          "folk",
+          "Joni Mitchell",
+          "Leonard Cohen"
+        ],
+        "missing_keywords": [
+          "Chopin",
+          "blues"
+        ],
+        "total_expected": 6,
+        "details": "Found 4/6 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What does Alex like to cook?",
+      "expected_keywords": [
+        "fish tacos",
+        "Mexican",
+        "Mexican food"
+      ],
+      "triple_count": 14,
+      "summary": "Alex, who\u2019s celebrating his birthday on September 3rd, is currently quite busy with several exciting projects. He's just finished building a beautiful coffee table \u2013 he really enjoys woodworking! And speaking of enjoying, Alex is also a huge fan of reggae music, especially Bob Marley, and has a dedicated playlist filled with his favorite tunes.  He\u2019s even working on expanding that playlist while simultaneously planning a barbecue and preparing delicious fish tacos for the occasion.  In fact, he's so immersed in his plans that he\u2019s also enjoying a good book by Emily Dickinson and continuing to hone his woodworking skills, currently focused on another coffee table project!  Beyond his current endeavors, Alex is an avid surfer and consistently seeks out new ways to connect with the music of Bob Marley.",
+      "score_info": {
+        "score": 0.3333333333333333,
+        "found_keywords": [
+          "fish tacos"
+        ],
+        "missing_keywords": [
+          "Mexican",
+          "Mexican food"
+        ],
+        "total_expected": 3,
+        "details": "Found 1/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What food does Sophia prefer?",
+      "expected_keywords": [
+        "Italian",
+        "pasta",
+        "tomatoes",
+        "garlic"
+      ],
+      "triple_count": 24,
+      "summary": "Sophia is currently juggling several passions and plans \u2013 she\u2019s meticulously planning fish tacos for tonight, while simultaneously looking forward to her upcoming birthday on December 22nd, which she intends to celebrate with a special gathering.  She finds solace and inspiration in the works of authors like Virginia Woolf, Emily Dickinson, and Leonard Cohen, often revisiting Woolf's prose and listening intently to Joni Mitchell\u2019s music \u2013 particularly folk and classical genres.  Sophia enjoys both active pursuits such as rock climbing and painting watercolors, currently capturing a beautiful sunset scene on canvas, and more contemplative ones like writing short stories and appreciating the lyrical depth of Joni Mitchell\u2019s songs. Beyond her artistic endeavors, she also relishes cooking Italian cuisine, including delicious pasta with tomatoes and garlic, and is always eager to share her love of music \u2013 whether it's folk or classical \u2013 with those around her.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "Italian",
+          "pasta",
+          "tomatoes",
+          "garlic"
+        ],
+        "missing_keywords": [],
+        "total_expected": 4,
+        "details": "Found 4/4 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What are Alex's hobbies?",
+      "expected_keywords": [
+        "surfing",
+        "woodworking",
+        "furniture"
+      ],
+      "triple_count": 14,
+      "summary": "Alex is gearing up for a busy month! With his birthday on September 3rd, he\u2019s currently working on curating the perfect Bob Marley playlist \u2013 especially enjoying the artist and listening to his music as he finishes up his woodworking project, a coffee table he's been meticulously crafting. He also loves spending time surfing and is planning a barbecue, where he intends to make delicious fish tacos. While prepping for the barbecue, Alex is simultaneously expanding his Bob Marley playlist, reminiscing about his love of reggae music and remembering that he\u2019s particularly fond of Emily Dickinson \u2013 she\u2019s currently the author he's reading.",
+      "score_info": {
+        "score": 0.6666666666666666,
+        "found_keywords": [
+          "surfing",
+          "woodworking"
+        ],
+        "missing_keywords": [
+          "furniture"
+        ],
+        "total_expected": 3,
+        "details": "Found 2/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What are Sophia's hobbies?",
+      "expected_keywords": [
+        "painting",
+        "watercolors",
+        "writing",
+        "rock climbing"
+      ],
+      "triple_count": 24,
+      "summary": "Sophia is currently juggling several passions and plans. She\u2019s excitedly planning to make fish tacos while also enjoying the evocative melodies of artist Joni Mitchell, particularly her folk music \u2013 a genre she deeply appreciates.  She\u2019s also prepping for an upcoming birthday celebration, which she's looking forward to immensely, having on December 22nd. Sophia finds inspiration in authors like Virginia Woolf and Emily Dickinson, frequently revisiting Woolf\u2019s works and even writing short stories inspired by Dickinson\u2019s poetry.  Beyond her creative pursuits, she loves rock climbing, enjoys Italian cuisine and classical music (with Joni Mitchell being a particular favorite), and spends her free time listening to Leonard Cohen and painting watercolor sunsets \u2013 often reflecting the same scenes she appreciates in Virginia Woolf's prose.",
+      "score_info": {
+        "score": 0.75,
+        "found_keywords": [
+          "painting",
+          "writing",
+          "rock climbing"
+        ],
+        "missing_keywords": [
+          "watercolors"
+        ],
+        "total_expected": 4,
+        "details": "Found 3/4 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What authors does Sophia read?",
+      "expected_keywords": [
+        "Emily Dickinson",
+        "Virginia Woolf"
+      ],
+      "triple_count": 24,
+      "summary": "Sophia is currently juggling several exciting projects and passions. She\u2019s planning to make delicious fish tacos for an upcoming birthday celebration, which she's eagerly anticipating \u2013 her birthday falls on December 22nd! Sophia enjoys a diverse range of activities and interests, from rock climbing and painting watercolor sunsets depicting beautiful scenes inspired by authors like Virginia Woolf, Emily Dickinson, and even revisiting the works of Woolf herself. She\u2019s also deeply appreciative of Joni Mitchell\u2019s music, particularly folk music and classical pieces she often listens to alongside Leonard Cohen, and finds inspiration in both her songwriting and her reading \u2013 she loves writing short stories and rereading Virginia Woolf.  Beyond these creative pursuits, Sophia enjoys cooking Italian cuisine, including a comforting dish of pasta with tomatoes and garlic, and is currently listening to Joni Mitchell while contemplating her next artistic endeavor.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "Emily Dickinson",
+          "Virginia Woolf"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What does Sophia paint?",
+      "expected_keywords": [
+        "watercolors",
+        "sunset"
+      ],
+      "triple_count": 24,
+      "summary": "Sophia is currently juggling several passions and projects, including planning a birthday celebration for herself \u2013 her birthday falls on December 22nd \u2013 and meticulously crafting fish tacos. She\u2019s deeply immersed in the music of Joni Mitchell, particularly folk music, alongside classical composers like Leonard Cohen, often listening to her while she enjoys activities like rock climbing or painting watercolor sunsets inspired by artists like Emily Dickinson and Virginia Woolf, whom she greatly admires and frequently revisits for inspiration. Sophia also relishes cooking up comforting dishes like pasta with tomatoes and garlic, and a love of Italian cuisine guides many of her culinary choices.  Beyond the immediate plans, she\u2019s currently working on short stories and appreciating the writing of Virginia Woolf and Joni Mitchell, finding solace and creativity in both their art and their music.",
+      "score_info": {
+        "score": 0.5,
+        "found_keywords": [
+          "sunset"
+        ],
+        "missing_keywords": [
+          "watercolors"
+        ],
+        "total_expected": 2,
+        "details": "Found 1/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "When are both Alex and Sophia's birthdays?",
+      "expected_keywords": [
+        "September 3",
+        "December 22"
+      ],
+      "triple_count": 38,
+      "summary": "Alex, who has a birthday on September 3rd and especially loves the music of Bob Marley \u2013 he\u2019s currently working on a playlist dedicated to the artist \u2013 enjoys spending his time woodworking and preparing for a barbecue. He's also finishing up a coffee table project and appreciates the works of Emily Dickinson and Virginia Woolf. Meanwhile, Sophia is planning a birthday celebration for herself, which falls on December 22nd, and is inspired by both Virginia Woolf and Emily Dickinson; she\u2019s currently revisiting Woolf\u2019s novels and painting sunset scenes. Sophia enjoys folk music and listening to Joni Mitchell \u2013 often while crafting pasta with tomatoes and garlic or writing short stories. She also loves rock climbing, appreciating Italian cuisine, and is looking forward to celebrating her birthday with a delicious meal.  Sophia is particularly fond of Leonard Cohen and enjoys the activity of watercolor painting, frequently inspired by Woolf\u2019s prose and listening to Joni Mitchell as she does.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "September 3",
+          "December 22"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What do Alex and Sophia both enjoy that's creative?",
+      "expected_keywords": [
+        "music",
+        "woodworking",
+        "painting",
+        "writing",
+        "creative"
+      ],
+      "triple_count": 38,
+      "summary": "Alex, who has a birthday on September 3rd and especially loves the music of Bob Marley \u2013 he\u2019s currently working on a playlist dedicated to him \u2013 enjoys spending his time woodworking and preparing barbecues. He's also finishing up a coffee table project and appreciates the works of Emily Dickinson and Virginia Woolf. Meanwhile, Sophia is gearing up for her birthday celebration on December 22nd and plans to make both fish tacos and pasta with tomatoes and garlic. A huge fan of Joni Mitchell and folk music in general, she\u2019s inspired by Virginia Woolf and Emily Dickinson, often revisiting their writings and enjoying painting sunset scenes \u2013 a subject she finds particularly captivating. Sophia also loves writing short stories, listening to Leonard Cohen, rock climbing, and appreciates Italian cuisine, frequently indulging in it while reading Virginia Woolf or simply listening to Joni Mitchell.  Both Alex and Sophia are looking forward to celebrating birthdays, with Alex planning his own barbecue and Sophia revisiting the works of both Virginia Woolf and Emily Dickinson, all while enjoying a diverse range of music genres \u2013 from reggae and classical to folk!",
+      "score_info": {
+        "score": 0.8,
+        "found_keywords": [
+          "music",
+          "woodworking",
+          "painting",
+          "writing"
+        ],
+        "missing_keywords": [
+          "creative"
+        ],
+        "total_expected": 5,
+        "details": "Found 4/5 expected keywords"
+      },
+      "confidence_scores": []
+    }
+  ],
+  "total_score": 9.716666666666669,
+  "average_score": 0.8097222222222223,
+  "perfect_scores": 6,
+  "zero_scores": 0,
+  "grade": "B",
+  "query_count": 12
+}

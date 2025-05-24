@@ -1,0 +1,281 @@
+{
+  "results": [
+    {
+      "query": "What is Alex's birthday?",
+      "expected_keywords": [
+        "September 3",
+        "September 3rd"
+      ],
+      "triple_count": 11,
+      "summary": "Alex is keeping incredibly busy these days! He\u2019s currently preparing for September 3rd, when he plans to make fish tacos \u2013 a delicious treat he\u2019s really excited about, especially considering his love of barbecue. Alex also enjoys creating art, often capturing stunning sunsets through his paintings, and he\u2019s just finished a new woodworking project, continuing a hobby he truly loves alongside surfing. He's not just focused on tangible creations though; Alex is meticulously working on a playlist filled with music that perfectly suits his mood, enjoying both the activity of woodworking and the thrill of catching waves, all while anticipating a special birthday celebration.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "September 3",
+          "September 3rd"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What is Sophia's birthday?",
+      "expected_keywords": [
+        "December 22",
+        "December 22nd"
+      ],
+      "triple_count": 12,
+      "summary": "Sophia has been enjoying a wonderfully varied mix of activities lately. She\u2019s particularly captivated by music, especially the melancholic beauty of Leonard Cohen, and has been revisiting classic literature while simultaneously reading new works \u2013 she clearly has an interest in both old and new stories. Beyond her literary pursuits, Sophia also enjoys spending time outdoors, evidenced by her passion for rock climbing and a general fascination with nature. Currently, she\u2019s meticulously working on a watercolor painting, a hobby she truly loves, and it's all part of the preparations for her upcoming birthday \u2013 which is, unsurprisingly, on her birthday! Overall, Sophia is a creative and active individual, always seeking new experiences and pleasures.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "December 22",
+          "December 22nd"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What type of music does Alex like?",
+      "expected_keywords": [
+        "reggae",
+        "Bob Marley"
+      ],
+      "triple_count": 11,
+      "summary": "Alex is incredibly busy preparing for the month ahead! He\u2019s currently working on a playlist filled with music he loves and, most excitingly, planning to make delicious fish tacos for his birthday, which is September 3rd. Alex enjoys both the active pursuits of surfing and woodworking \u2013 he's actually just finished a new woodworking project \u2013 and also finds joy in creating art, often capturing stunning sunsets. He\u2019s particularly excited about an upcoming barbecue and anticipates sharing it with friends while continuing to curate his musical selections.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "reggae",
+          "Bob Marley"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What type of music does Sophia like?",
+      "expected_keywords": [
+        "classical",
+        "folk",
+        "Chopin",
+        "Joni Mitchell",
+        "Leonard Cohen",
+        "blues"
+      ],
+      "triple_count": 12,
+      "summary": "Here\u2019s a paragraph combining all the provided details, aiming for a natural flow and incorporating all important elements:\n\nSophia is currently enjoying a mix of things \u2013 she's been revisiting classic literature and reading extensively, particularly drawn to Leonard Cohen\u2019s music and lyrics. She also loves spending time outdoors, frequently indulging in rock climbing and watercolor painting; right now, she\u2019s meticulously working on a new watercolor piece. Sophia has a birthday coming up on her birthday, and as part of her preparations, she's planning an event. Throughout the year, she consistently enjoys listening to music, particularly songs that resonate with her interest in the outdoors, and continues to find joy in both painting and exploring new literary landscapes.",
+      "score_info": {
+        "score": 0.16666666666666666,
+        "found_keywords": [
+          "Leonard Cohen"
+        ],
+        "missing_keywords": [
+          "classical",
+          "folk",
+          "Chopin",
+          "Joni Mitchell",
+          "blues"
+        ],
+        "total_expected": 6,
+        "details": "Found 1/6 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What does Alex like to cook?",
+      "expected_keywords": [
+        "fish tacos",
+        "Mexican",
+        "Mexican food"
+      ],
+      "triple_count": 11,
+      "summary": "Alex is keeping incredibly busy lately! He\u2019s currently preparing for a big event \u2013 he\u2019ll be making fish tacos on September 3rd, and he's also excited about an upcoming barbecue.  He\u2019s been enjoying the creative process, having just finished a woodworking project and even creating beautiful sunset art. Alex loves to indulge his passions, whether it\u2019s perfecting his playlist for listening to music, catching some waves while surfing, or simply relaxing with a good bit of woodworking. And, as if that wasn't enough, he\u2019s also celebrating his birthday soon!",
+      "score_info": {
+        "score": 0.3333333333333333,
+        "found_keywords": [
+          "fish tacos"
+        ],
+        "missing_keywords": [
+          "Mexican",
+          "Mexican food"
+        ],
+        "total_expected": 3,
+        "details": "Found 1/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What food does Sophia prefer?",
+      "expected_keywords": [
+        "Italian",
+        "pasta",
+        "tomatoes",
+        "garlic"
+      ],
+      "triple_count": 12,
+      "summary": "Here\u2019s a paragraph combining all the provided details into a cohesive narrative:\n\nSophia has been enjoying a wonderfully multifaceted life lately. She's particularly captivated by music, especially the melancholic beauty of Leonard Cohen, and continues to delve into literature, revisiting classic works alongside her own reading. Beyond books, Sophia also possesses a strong interest in the outdoors \u2013 she\u2019s currently working on a stunning watercolor painting inspired by landscapes, and enjoys rock climbing as well.  It's quite fitting that with all this creative energy, her birthday is just around the corner (on birthday!), and she\u2019s already planning a special event to celebrate. She\u2019s truly someone who finds joy in both quiet contemplation and active pursuits, always seeking new experiences and artistic expression.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "Italian",
+          "pasta",
+          "tomatoes",
+          "garlic"
+        ],
+        "total_expected": 4,
+        "details": "Found 0/4 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What are Alex's hobbies?",
+      "expected_keywords": [
+        "surfing",
+        "woodworking",
+        "furniture"
+      ],
+      "triple_count": 11,
+      "summary": "Alex is keeping incredibly busy lately! He\u2019s currently planning to make delicious fish tacos for his birthday, which is on [Date - you'd need to add the actual date], and he\u2019s also preparing the activity for September 3rd \u2013 a barbecue that he\u2019s really excited about. Alex enjoys creating art, often capturing beautiful sunsets with his paintings, and he recently finished a woodworking project he was particularly proud of. Beyond these projects, Alex is putting together a playlist filled with music he loves, enjoying surfing when he can, and continues to find joy in the simple pleasure of woodworking.",
+      "score_info": {
+        "score": 0.6666666666666666,
+        "found_keywords": [
+          "surfing",
+          "woodworking"
+        ],
+        "missing_keywords": [
+          "furniture"
+        ],
+        "total_expected": 3,
+        "details": "Found 2/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What are Sophia's hobbies?",
+      "expected_keywords": [
+        "painting",
+        "watercolors",
+        "writing",
+        "rock climbing"
+      ],
+      "triple_count": 12,
+      "summary": "Sophia is currently enjoying a wonderfully multifaceted life. She\u2019s been particularly captivated by the music of Leonard Cohen, and her love for enjoying music extends beyond just listening \u2013 she actively revisits classic literature, reading everything from novels to poetry. Sophia also has a strong interest in the outdoors, frequently indulging in activities like rock climbing and watercolor painting; currently, she's deeply engrossed in a new watercolor piece.  Adding to her creative pursuits, she\u2019s been revisiting old favorites and planning a special event for her birthday, which is on [Sophia's Birthday Date - you would need to fill this in!]. Overall, Sophia is a vibrant individual with a diverse range of passions and interests.",
+      "score_info": {
+        "score": 0.5,
+        "found_keywords": [
+          "painting",
+          "rock climbing"
+        ],
+        "missing_keywords": [
+          "watercolors",
+          "writing"
+        ],
+        "total_expected": 4,
+        "details": "Found 2/4 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What authors does Sophia read?",
+      "expected_keywords": [
+        "Emily Dickinson",
+        "Virginia Woolf"
+      ],
+      "triple_count": 12,
+      "summary": "Here\u2019s a paragraph combining all the provided details, aiming for a natural flow and incorporating everything seamlessly:\n\nSophia has been enjoying a particularly rich period lately \u2013 she\u2019s been revisiting classic literature and deeply immersed in reading, while also finding solace and joy in music, especially listening to Leonard Cohen.  Beyond her literary pursuits, Sophia is actively engaged in several activities she truly loves; she's currently working on a beautiful watercolor painting and recently rediscovered her passion for rock climbing, fueled by an interest in the outdoors. She\u2019s also planning a special event \u2013 her birthday, which falls on [Sophia\u2019s Birthday Date]!  It seems this creative soul is simply enjoying all aspects of life, from appreciating the beauty of art to exploring the natural world and losing herself in captivating songs.",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "Emily Dickinson",
+          "Virginia Woolf"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What does Sophia paint?",
+      "expected_keywords": [
+        "watercolors",
+        "sunset"
+      ],
+      "triple_count": 12,
+      "summary": "Sophia is currently enjoying a wonderfully multifaceted life. She's been particularly captivated by the music of Leonard Cohen, and enjoys listening to him regularly alongside her other passions.  Recently, she\u2019s been deeply immersed in watercolor painting, meticulously working on a new piece while also revisiting classic literature \u2013 a habit that extends to her regular reading habits. Sophia has a strong interest in the outdoors and frequently engages in rock climbing, complementing her creative pursuits with active adventures. To top it all off, she's planning an event for her birthday, which is coming up soon!",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "watercolors",
+          "sunset"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "When are both Alex and Sophia's birthdays?",
+      "expected_keywords": [
+        "September 3",
+        "December 22"
+      ],
+      "triple_count": 23,
+      "summary": "Alex is currently working on a playlist, and he also enjoys music and woodworking \u2013 recently finishing a satisfying woodworking project and creating beautiful sunsets as art. Sophia, meanwhile, is deeply immersed in her interests, having been revisiting literature and planning an event for her birthday, which is also Alex\u2019s! She particularly enjoys watercolor painting and listening to songs, especially those by Leonard Cohen, and has been enjoying the outdoors lately, including surfing and rock climbing. Sophia\u2019s also preparing a delicious meal \u2013 she's planning to make fish tacos for a barbecue, and she's been revisiting literature while simultaneously working on her own watercolor painting.  Alex is even excited about his upcoming birthday and plans to make food as well!",
+      "score_info": {
+        "score": 0.0,
+        "found_keywords": [],
+        "missing_keywords": [
+          "September 3",
+          "December 22"
+        ],
+        "total_expected": 2,
+        "details": "Found 0/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What do Alex and Sophia both enjoy that's creative?",
+      "expected_keywords": [
+        "music",
+        "woodworking",
+        "painting",
+        "writing",
+        "creative"
+      ],
+      "triple_count": 23,
+      "summary": "Alex is currently working on a playlist, and he also enjoys both music and woodworking \u2013 he\u2019s even finished a recent woodworking project! He\u2019s particularly excited for his birthday, which is coming up. Sophia, meanwhile, has been revisiting literature and enjoys watercolor painting, often listening to songs by Leonard Cohen. She's also planning an event, having recently enjoyed songs and has a strong interest in the outdoors, including surfing and rock climbing. Sophia also has a birthday on the same day as Alex\u2019s, and she\u2019s been enjoying creating art, particularly sunsets, alongside her passion for watercolor painting.  She\u2019s currently working on a new painting, and preparing to make fish tacos for an upcoming barbecue \u2013 a perfect way to celebrate!",
+      "score_info": {
+        "score": 0.6,
+        "found_keywords": [
+          "music",
+          "woodworking",
+          "painting"
+        ],
+        "missing_keywords": [
+          "writing",
+          "creative"
+        ],
+        "total_expected": 5,
+        "details": "Found 3/5 expected keywords"
+      },
+      "confidence_scores": []
+    }
+  ],
+  "total_score": 3.2666666666666666,
+  "average_score": 0.2722222222222222,
+  "perfect_scores": 1,
+  "zero_scores": 6,
+  "grade": "F",
+  "query_count": 12
+}

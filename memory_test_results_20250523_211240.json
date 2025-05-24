@@ -1,0 +1,283 @@
+{
+  "results": [
+    {
+      "query": "What is Alex's birthday?",
+      "expected_keywords": [
+        "April 18",
+        "April 18th"
+      ],
+      "triple_count": 14,
+      "summary": "Alex is keeping busy with several exciting projects leading up to their celebration on April 18th. They\u2019re currently growing basil for a delicious fettuccine alfredo dish they'll be serving at a party they\u2019re meticulously planning, and Alex especially enjoys cooking that very dish!  They\u2019re also working on a fantastic Arctic Monkeys playlist \u2013 Alex is particularly fond of the band \u2013 alongside exploring their love of indie rock music in general. Beyond the party preparations, Alex is taking landscape photos, enjoying a recent hike, and even delving into classical composer Debussy for a change of pace. It seems like a busy but fulfilling time filled with delicious food, great music, and beautiful scenery!",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "April 18",
+          "April 18th"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What is Sophia's birthday?",
+      "expected_keywords": [
+        "May 15",
+        "May 15th"
+      ],
+      "triple_count": 22,
+      "summary": "Sophia is looking forward to her birthday on May 15th, and she\u2019s been particularly enjoying revisiting the poetry of Hafez \u2013 she even reads him regularly alongside Miles Davis. She's also deeply immersed in the world of jazz, discovering new albums like Miles Davis\u2019s and listening to both Miles Davis and John Coltrane, sometimes while indulging in bossa nova too! Sophia loves Mediterranean cuisine and is currently planning a delicious fettuccine alfredo, often cooking up Greek dishes alongside her growing herb garden \u2013 she\u2019s particularly enjoying tending to her basil and other herbs. Beyond food and music, she finds solace and inspiration in nature imagery and appreciates the beauty of Rumi's work as well, truly embracing moments of quiet reflection like those brought on by listening to Miles Davis.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "May 15",
+          "May 15th"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What type of music does Alex like?",
+      "expected_keywords": [
+        "indie rock",
+        "Arctic Monkeys"
+      ],
+      "triple_count": 14,
+      "summary": "Alex is keeping busy with a lot of exciting things leading up to April 18th, when they\u2019re celebrating! They're currently growing basil for a delicious fettuccine alfredo dish they\u2019ll be serving at their party. Alex especially likes the band Arctic Monkeys and is meticulously working on an Arctic Monkeys playlist to set the mood \u2013 they also enjoy indie rock in general. Beyond cooking and music, Alex is taking landscape photos, clearly enjoying the activity of landscape photography, and they even appreciate classical composers like Debussy. To unwind before the festivities, Alex enjoys hiking, and it\u2019s all part of a busy schedule filled with planning a fantastic dinner party!",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "indie rock",
+          "Arctic Monkeys"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What type of music does Sophia like?",
+      "expected_keywords": [
+        "classical",
+        "jazz",
+        "Debussy",
+        "Miles Davis",
+        "John Coltrane",
+        "bossa nova"
+      ],
+      "triple_count": 22,
+      "summary": "Sophia is looking forward to her birthday on May 15th, and she\u2019s already planning a delicious fettuccine alfredo. She's been enjoying Miles Davis lately \u2013 specifically, the album she recently discovered \u2013 alongside her favorite jazz music, including works by both Miles Davis and John Coltrane. Sophia also loves exploring different cuisines, particularly Mediterranean food and Greek dishes, and currently enjoys tending to her herb garden where she\u2019s growing basil and other herbs. She's a big fan of Hafez, reading his poetry and even revisiting his work, much like she enjoys nature imagery and the soulful sounds of bossa nova. Interestingly, Sophia also appreciates the music of Miles Davis so much that she\u2019s been listening to him repeatedly, and her appreciation extends to the wisdom found within Rumi's writings \u2013 a connection she finds particularly rewarding.",
+      "score_info": {
+        "score": 0.6666666666666666,
+        "found_keywords": [
+          "jazz",
+          "Miles Davis",
+          "John Coltrane",
+          "bossa nova"
+        ],
+        "missing_keywords": [
+          "classical",
+          "Debussy"
+        ],
+        "total_expected": 6,
+        "details": "Found 4/6 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What does Alex like to cook?",
+      "expected_keywords": [
+        "fettuccine alfredo",
+        "Italian",
+        "Italian food"
+      ],
+      "triple_count": 14,
+      "summary": "Alex is busy preparing for a celebration on April 18th, and he\u2019s got quite the mix of activities going on! He's currently growing basil for his party dish \u2013 fettuccine alfredo, which he particularly enjoys cooking. Alex is also meticulously working on an Arctic Monkeys playlist as part of his dinner party preparations, especially enjoying their indie rock sound. Beyond the culinary and musical aspects, he\u2019s taking landscape photos, a hobby he truly loves, and even finds time to hike in nature.  Interestingly, Alex\u2019s favorite music artist is Debussy alongside his beloved Arctic Monkeys \u2013 it's clear he appreciates a wide range of sounds!",
+      "score_info": {
+        "score": 0.3333333333333333,
+        "found_keywords": [
+          "fettuccine alfredo"
+        ],
+        "missing_keywords": [
+          "Italian",
+          "Italian food"
+        ],
+        "total_expected": 3,
+        "details": "Found 1/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What food does Sophia prefer?",
+      "expected_keywords": [
+        "Mediterranean",
+        "Greek",
+        "herbs",
+        "olive oil"
+      ],
+      "triple_count": 22,
+      "summary": "Sophia is looking forward to her birthday on May 15th, and she\u2019s been indulging in some of her favorite things lately. She's currently enjoying Miles Davis\u2019 music \u2013 particularly his album which she recently discovered \u2013 alongside a deep appreciation for jazz, including the work of John Coltrane and even bossa nova. Sophia is also revisiting Hafez, reading his poetry alongside Rumi, and tending to her herb garden where she\u2019s happily growing basil and other herbs.  She enjoys nature imagery as much as her favorite cuisine, Mediterranean food, and often cooks up delicious Greek dishes like fettuccine alfredo. It seems she's a woman who finds joy in both the artistic and practical aspects of life \u2013 from listening to Miles Davis and enjoying Hafez to planning a special birthday meal!",
+      "score_info": {
+        "score": 0.75,
+        "found_keywords": [
+          "Mediterranean",
+          "Greek",
+          "herbs"
+        ],
+        "missing_keywords": [
+          "olive oil"
+        ],
+        "total_expected": 4,
+        "details": "Found 3/4 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What are Alex's hobbies?",
+      "expected_keywords": [
+        "hiking",
+        "photography",
+        "landscape photography"
+      ],
+      "triple_count": 14,
+      "summary": "Alex is keeping busy with several exciting projects as April 18th approaches. They\u2019re currently growing basil for a delicious fettuccine alfredo dish they'll be serving at their upcoming party, and are meticulously working on an Arctic Monkeys playlist \u2013 especially since they particularly like the band! Beyond cooking and party preparations, Alex is also enjoying the outdoors with landscape photography, capturing beautiful scenes while simultaneously hiking. They\u2019ve even been listening to Debussy alongside their indie rock favorites, like Arctic Monkeys, to set the mood for a relaxed evening. It's clear that Alex is planning a memorable celebration filled with good food, music, and stunning visuals.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "hiking",
+          "photography",
+          "landscape photography"
+        ],
+        "missing_keywords": [],
+        "total_expected": 3,
+        "details": "Found 3/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What are Sophia's hobbies?",
+      "expected_keywords": [
+        "reading",
+        "philosophy",
+        "poetry",
+        "gardening"
+      ],
+      "triple_count": 22,
+      "summary": "Sophia is looking forward to her birthday on May 15th, and she\u2019s been indulging in some favorite activities lately. She\u2019s currently enjoying Miles Davis' music \u2013 particularly his album which she recently discovered \u2013 alongside exploring the poetry of Hafez, whom she\u2019s revisiting with renewed interest. Sophia also loves Mediterranean cuisine and is planning to make a delicious fettuccine alfredo for the occasion.  She finds solace in nature imagery and enjoys tending to her herb garden, growing everything from basil to herbs, often inspired by her love of jazz music, including artists like Miles Davis and John Coltrane, as well as bossa nova. She\u2019s also a fan of Greek dishes, having read Hafez multiple times, and generally looks forward to birthdays in general.",
+      "score_info": {
+        "score": 0.25,
+        "found_keywords": [
+          "poetry"
+        ],
+        "missing_keywords": [
+          "reading",
+          "philosophy",
+          "gardening"
+        ],
+        "total_expected": 4,
+        "details": "Found 1/4 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What poets does Sophia read?",
+      "expected_keywords": [
+        "Rumi",
+        "Hafez"
+      ],
+      "triple_count": 22,
+      "summary": "Sophia is currently enjoying a peaceful May, particularly looking forward to her birthday on May 15th. She\u2019s been revisiting the works of Hafez, a favorite author and poet, alongside listening to Miles Davis \u2013 she recently discovered his incredible album and continues to be captivated by his jazz sound, much like John Coltrane, another artist she appreciates. Sophia loves Mediterranean cuisine and is planning to make fettuccine alfredo, while also tending to her herb garden where she\u2019s diligently growing basil and other herbs for cooking, often preparing delicious Greek dishes inspired by Hafez's poetry.  She finds solace in nature imagery and enjoys listening to jazz and bossa nova \u2013 a perfect complement to the beauty of her growing plants and the contemplative spirit of Rumi\u2019s writings.",
+      "score_info": {
+        "score": 1.0,
+        "found_keywords": [
+          "Rumi",
+          "Hafez"
+        ],
+        "missing_keywords": [],
+        "total_expected": 2,
+        "details": "Found 2/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What herbs does Sophia grow?",
+      "expected_keywords": [
+        "basil",
+        "rosemary"
+      ],
+      "triple_count": 22,
+      "summary": "Sophia is currently enjoying a particularly lovely spring, marked by several things she\u2019s looking forward to. She's eagerly anticipating her birthday on May 15th and birthdays in general, and right now she\u2019s lost in the soulful sounds of Miles Davis, having recently discovered his incredible album. Sophia loves Mediterranean cuisine and is planning to make fettuccine alfredo for a special meal \u2013 alongside her current project of growing basil and tending to her herb garden, which includes a variety of herbs like Greek dishes. She also enjoys delving into the poetry of Rumi and Hafez, frequently revisiting Hafez\u2019s work while simultaneously appreciating nature imagery and jazz music, particularly Miles Davis and John Coltrane. It seems she finds solace and inspiration in both the vibrant flavors of food and the beauty of the natural world, all while listening to a diverse range of musical genres like bossa nova as well.",
+      "score_info": {
+        "score": 0.5,
+        "found_keywords": [
+          "basil"
+        ],
+        "missing_keywords": [
+          "rosemary"
+        ],
+        "total_expected": 2,
+        "details": "Found 1/2 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "When are both Alex and Sophia's birthdays?",
+      "expected_keywords": [
+        "April 18",
+        "May 15",
+        "spring"
+      ],
+      "triple_count": 36,
+      "summary": "Alex, who celebrates on April 18th and particularly enjoys landscape photography and hiking, is currently working on an Arctic Monkeys playlist while also growing basil \u2013 a shared interest with Sophia. Sophia, whose birthday falls on May 15th and who\u2019s eagerly anticipating it, is revisiting Hafez and enjoying Miles Davis' music, specifically his iconic album that she recently discovered. She\u2019s also planning to make fettuccine alfredo, a dish Alex expertly prepares, and is listening intently to jazz, including the work of Miles Davis and John Coltrane.  Alex himself is preparing for a dinner party, enjoys Debussy\u2019s music and indie rock, especially Arctic Monkeys, and even cooks up delicious Greek dishes alongside his fettuccine alfredo. Sophia is tending to her herb garden, growing various herbs, and recently enjoyed nature imagery while also appreciating the works of Rumi \u2013 further fueling her love for both jazz and bossa nova.",
+      "score_info": {
+        "score": 0.6666666666666666,
+        "found_keywords": [
+          "April 18",
+          "May 15"
+        ],
+        "missing_keywords": [
+          "spring"
+        ],
+        "total_expected": 3,
+        "details": "Found 2/3 expected keywords"
+      },
+      "confidence_scores": []
+    },
+    {
+      "query": "What do Alex and Sophia both enjoy that's creative?",
+      "expected_keywords": [
+        "music",
+        "photography",
+        "poetry",
+        "creative"
+      ],
+      "triple_count": 36,
+      "summary": "Alex, who celebrates on April 18th and enjoys landscape photography as well as cooking up delicious fettuccine alfredo \u2013 he\u2019s even working on an Arctic Monkeys playlist \u2013 is also preparing for a dinner party. He particularly likes the band Arctic Monkeys and enjoys hiking in nature, while Alex is currently growing basil alongside his friend Sophia. Sophia, whose birthday falls on May 15th, is excitedly looking forward to her upcoming celebrations! She's revisiting Hafez, tending to her herb garden, and enjoying jazz music \u2013 especially Miles Davis, whom she recently discovered through an album, and also appreciates bossa nova. Alex enjoys Debussy too, and Sophia often reads the works of Rumi and Hafez.  Sophia is currently planning a fettuccine alfredo dish for the party, and she\u2019s clearly immersed in enjoying nature imagery while listening to Miles Davis \u2013 it's a busy but delightful time for both!",
+      "score_info": {
+        "score": 0.5,
+        "found_keywords": [
+          "music",
+          "photography"
+        ],
+        "missing_keywords": [
+          "poetry",
+          "creative"
+        ],
+        "total_expected": 4,
+        "details": "Found 2/4 expected keywords"
+      },
+      "confidence_scores": []
+    }
+  ],
+  "total_score": 8.666666666666666,
+  "average_score": 0.7222222222222222,
+  "perfect_scores": 5,
+  "zero_scores": 0,
+  "grade": "C",
+  "query_count": 12
+}

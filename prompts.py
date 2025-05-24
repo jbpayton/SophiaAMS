@@ -45,41 +45,28 @@ Critical rules:
    - The text fields should contain only the core nouns/verbs without modifiers
    - Split complex statements into multiple atomic triples when needed
 
-Example of correct handling:
-Input: "Hatsune Miku was the first member of the Character Vocal Series"
+Example of correct modifier usage:
+Input: "The red sports car was quickly developed by Tesla in 2023"
 Output:
 {{
   "subject": {{
-    "text": "Hatsune Miku",
-    "modifiers": {{}}
-  }},
-  "verb": {{
-    "text": "is",
-    "modifiers": {{}}
-  }},
-  "object": {{
-    "text": "member",
+    "text": "car",
     "modifiers": {{
-      "position": "first",
-      "of": "Character Vocal Series"
+      "color": "red",
+      "type": "sports"
     }}
-  }}
-}}
-
-INCORRECT usage (avoid this):
-{{
-  "subject": {{
-    "text": "Hatsune Miku",
-    "modifiers": {{}}
   }},
   "verb": {{
-    "text": "was",
-    "modifiers": {{}}
+    "text": "was_developed",
+    "modifiers": {{
+      "manner": "quickly",
+      "time": "2023"
+    }}
   }},
   "object": {{
-    "text": "Character_Vocal_Series",
+    "text": "Tesla",
     "modifiers": {{
-      "first_member": true
+      "role": "company"
     }}
   }}
 }}
@@ -101,6 +88,146 @@ Output as JSON following this exact structure:
         "modifiers": {{}}
       }},
       "source_text": "exact_text_from_document"
+    }}
+  ]
+}}
+
+Text to analyze:
+{text}"""
+
+CONVERSATION_TRIPLE_EXTRACTION_PROMPT = """Extract structured triples from personal conversations for a knowledge graph. Each triple must have:
+- Subject: The main entity being described (with proper speaker attribution)
+- Verb: A simple, clear relationship predicate 
+- Object: What the subject relates to (preserving ALL specific details)
+
+The input format is: SPEAKER:name|dialogue_content
+
+CRITICAL RULES:
+
+1. **SPEAKER ATTRIBUTION** - Get this RIGHT:
+   - The speaker name is EXPLICITLY given after "SPEAKER:" 
+   - If the speaker says "I/my/me" → subject = the EXACT speaker name given
+   - If the speaker says "you/your" → subject = the OTHER person's name (not the speaker)
+   - If speaker talks about someone else → subject = that other person's name
+   - NEVER use the speaker's name as subject when they say "you/your"
+
+2. **PRESERVE ALL SPECIFIC DETAILS** - DO NOT GENERALIZE:
+   - Keep exact dates, names, places, foods, items VERBATIM in objects
+   - NEVER replace specific details with generic terms
+   - Extract ALL descriptive elements as modifiers, never leave them in main text fields
+   - The text fields should contain only core nouns/verbs without modifiers
+
+3. **USE RICH MODIFIER STRUCTURE** like the regular extraction:
+   - Physical qualities: "color", "size", "material", "condition"
+   - Temporal: "time", "duration", "frequency", "period"
+   - Descriptive: "type", "category", "role", "quality"
+   - Contextual: "location", "manner", "degree"
+   - EXTRACT ALL DESCRIPTIVE ELEMENTS as modifiers
+
+4. **MEANINGFUL PREDICATES**:
+   - Use simple, clear verbs: "has", "is", "enjoys", "prefers", "studies"
+   - "has_birthday_on", "enjoys_activity", "listens_to_artist"
+   - "prefers_food", "reads_author", "works_at", "studies_subject"
+
+5. **For ALL triples**:
+   - NEVER leave objects empty - preserve specific details
+   - EXTRACT ALL DESCRIPTIVE ELEMENTS as modifiers
+   - Split complex statements into multiple atomic triples when needed
+
+EXAMPLES (completely generic to avoid contamination):
+
+Input: SPEAKER:John|My car is a blue Honda and I drive it daily to work.
+Output:
+{{
+  "subject": {{
+    "text": "John",
+    "modifiers": {{}}
+  }},
+  "verb": {{
+    "text": "owns",
+    "modifiers": {{}}
+  }},
+  "object": {{
+    "text": "Honda",
+    "modifiers": {{
+      "color": "blue",
+      "type": "car"
+    }}
+  }},
+  "source_text": "My car is a blue Honda"
+}},
+{{
+  "subject": {{
+    "text": "John",
+    "modifiers": {{}}
+  }},
+  "verb": {{
+    "text": "drives_to",
+    "modifiers": {{
+      "frequency": "daily"
+    }}
+  }},
+  "object": {{
+    "text": "work",
+    "modifiers": {{}}
+  }},
+  "source_text": "I drive it daily to work"
+}}
+
+Input: SPEAKER:Mary|Your presentation last Friday was really impressive! I live in Chicago.
+Output:
+{{
+  "subject": {{
+    "text": "listener",
+    "modifiers": {{}}
+  }},
+  "verb": {{
+    "text": "gave_presentation",
+    "modifiers": {{
+      "time": "last Friday"
+    }}
+  }},
+  "object": {{
+    "text": "presentation",
+    "modifiers": {{
+      "quality": "impressive"
+    }}
+  }},
+  "source_text": "Your presentation last Friday was really impressive"
+}},
+{{
+  "subject": {{
+    "text": "Mary",
+    "modifiers": {{}}
+  }},
+  "verb": {{
+    "text": "lives_in",
+    "modifiers": {{}}
+  }},
+  "object": {{
+    "text": "Chicago",
+    "modifiers": {{}}
+  }},
+  "source_text": "I live in Chicago"
+}}
+
+Output as JSON following this exact structure:
+{{
+  "triples": [
+    {{
+      "subject": {{
+        "text": "entity",
+        "modifiers": {{}}
+      }},
+      "verb": {{
+        "text": "relation",
+        "modifiers": {{}}
+      }},
+      "object": {{
+        "text": "target_with_specific_details_preserved",
+        "modifiers": {{}}
+      }},
+      "source_text": "exact_text_from_conversation"
     }}
   ]
 }}

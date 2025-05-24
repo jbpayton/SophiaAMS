@@ -4,7 +4,7 @@ import time
 from typing import Dict, List, Optional, Union
 from openai import OpenAI
 from dotenv import load_dotenv
-from prompts import TRIPLE_EXTRACTION_PROMPT
+from prompts import TRIPLE_EXTRACTION_PROMPT, CONVERSATION_TRIPLE_EXTRACTION_PROMPT
 from schemas import TRIPLE_EXTRACTION_SCHEMA
 
 # Load environment variables
@@ -15,7 +15,8 @@ def extract_triples_from_string(
     source: Optional[str] = None,
     timestamp: Optional[float] = None,
     is_query: bool = False,
-    speaker: Optional[str] = None
+    speaker: Optional[str] = None,
+    is_conversation: bool = False
 ) -> Dict:
     """
     Extract semantic triples from a text string.
@@ -26,6 +27,7 @@ def extract_triples_from_string(
         timestamp: Optional timestamp for when the information was received
         is_query: Whether this is a query (affects how we process the results)
         speaker: Optional identifier for who generated this text
+        is_conversation: Whether this text is from a conversation (uses specialized prompt)
         
     Returns:
         Dict containing extracted triples and metadata
@@ -50,8 +52,11 @@ def extract_triples_from_string(
             # If parsing fails, just use the original text
             text_to_extract = text
     
-    # Prepare the prompt with the input text
-    prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
+    # Choose the appropriate prompt based on content type
+    if is_conversation:
+        prompt = CONVERSATION_TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
+    else:
+        prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
     
     # Call the LLM
     response = client.chat.completions.create(
