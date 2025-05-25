@@ -1,0 +1,704 @@
+[
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "reads",
+      "object": "Virginia Woolf"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete_summary",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": true,
+      "source_text": "I'm reading Virginia Woolf's literature",
+      "speaker": "Sophia",
+      "topics": [
+        "Literature Interest",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "has birthday on",
+      "object": "December 22nd"
+    },
+    "metadata": {
+      "source": "conversation:1748189977.7472358:complete_summary",
+      "timestamp": 1748189977.7472358,
+      "is_from_summary": true,
+      "source_text": "My birthday is December 22nd.",
+      "speaker": "Sophia",
+      "topics": [
+        "Personal Details",
+        "Birthday Celebration"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "made",
+      "object": "coffee table"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete_summary",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": true,
+      "source_text": "I made a coffee table recently",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Craft Projects"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "has_hobby",
+      "object": "painting watercolors"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I love painting watercolors",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "works_on",
+      "object": "watercolor painting"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": false,
+      "source_text": "I was just working on a watercolor painting this morning - trying to capture a sunset scene.",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "is_planning_to_eat",
+      "object": "Mexican food"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I'm thinking Mexican food - maybe my specialty fish tacos.",
+      "speaker": "Alex",
+      "topics": [
+        "Cuisine Preference",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "has birthday on",
+      "object": "September 3rd"
+    },
+    "metadata": {
+      "source": "conversation:1748189977.7472358:complete_summary",
+      "timestamp": 1748189977.7472358,
+      "is_from_summary": true,
+      "source_text": "My birthday is September 3rd.",
+      "speaker": "Alex",
+      "topics": [
+        "Personal Details",
+        "Birthday Celebration"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "engages in",
+      "object": "rock climbing"
+    },
+    "metadata": {
+      "source": "conversation:1748189977.7472358:complete_summary",
+      "timestamp": 1748189977.7472358,
+      "is_from_summary": true,
+      "source_text": "I also rock climb, paint watercolors, and write stories...",
+      "speaker": "Sophia",
+      "topics": [
+        "Hobbies",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "participates in",
+      "object": "surfing"
+    },
+    "metadata": {
+      "source": "conversation:1748189977.7472358:complete_summary",
+      "timestamp": 1748189977.7472358,
+      "is_from_summary": true,
+      "source_text": "I surf and woodwork furniture.",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "loves",
+      "object": "Chopin's nocturnes"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I was just listening to some Chopin - his nocturnes always help me focus.",
+      "speaker": "Alex",
+      "topics": [
+        "Music Preference",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "has birthday on",
+      "object": "December 22"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete_summary",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": true,
+      "source_text": "My birthday is on December 22",
+      "speaker": "Sophia",
+      "topics": [
+        "Personal Details",
+        "Biography"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "plans to host",
+      "object": "barbecue"
+    },
+    "metadata": {
+      "source": "conversation:1748189977.7472358:complete_summary",
+      "timestamp": 1748189977.7472358,
+      "is_from_summary": true,
+      "source_text": "I'm planning a barbecue with Mexican food like fish tacos.",
+      "speaker": "Alex",
+      "topics": [
+        "Event Planning",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "is_excited_for",
+      "object": "September 3rd"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": false,
+      "source_text": "I'm excited for September 3rd!",
+      "speaker": "Alex",
+      "topics": [
+        "Events",
+        "Planned Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "likes",
+      "object": "reggae music"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete_summary",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": true,
+      "source_text": "I like reggae music",
+      "speaker": "Alex",
+      "topics": [
+        "Music Genre",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "prepares",
+      "object": "barbecue"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete_summary",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": true,
+      "source_text": "I'm preparing barbecue for September 3rd",
+      "speaker": "Alex",
+      "topics": [
+        "Leisure Activities",
+        "Food Preference"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "has_hobby",
+      "object": "woodworking"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I love surfing and woodworking, especially making furniture.",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Creative Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "likes",
+      "object": "Joni Mitchell"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete_summary",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": true,
+      "source_text": "I discovered Joni Mitchell songs",
+      "speaker": "Sophia",
+      "topics": [
+        "Music Interest",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "listens_to",
+      "object": "Joni Mitchell"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": false,
+      "source_text": "I've been enjoying some Joni Mitchell songs last week.",
+      "speaker": "Alex",
+      "topics": [
+        "Music Preferences",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "likes",
+      "object": "folk music"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "Besides classical, I really enjoy folk music - particularly Joni Mitchell and Leonard Cohen.",
+      "speaker": "Alex",
+      "topics": [
+        "Music Genre",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "was_born_on",
+      "object": "December 22nd"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete_summary",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": true,
+      "source_text": "I celebrate my birthday on December 22nd",
+      "speaker": "Sophia",
+      "topics": [
+        "Personal Details",
+        "Birthday"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "is_interested_in",
+      "object": "Emily Dickinson"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": false,
+      "source_text": "I remember you mentioned loving Emily Dickinson.",
+      "speaker": "Alex",
+      "topics": [
+        "Interest",
+        "Literature"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "was_born_on",
+      "object": "September 3rd"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete_summary",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": true,
+      "source_text": "My birthday is on September 3rd",
+      "speaker": "Alex",
+      "topics": [
+        "Personal Details",
+        "Birthday"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "has",
+      "object": "Bob Marley playlist"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete_summary",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": true,
+      "source_text": "I have a Bob Marley playlist",
+      "speaker": "Alex",
+      "topics": [
+        "Music Interest",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "writes",
+      "object": "stories inspired by"
+    },
+    "metadata": {
+      "source": "conversation:1748189977.7472358:complete_summary",
+      "timestamp": 1748189977.7472358,
+      "is_from_summary": true,
+      "source_text": "write stories inspired by Emily Dickinson and Virginia Woolf.",
+      "speaker": "Sophia",
+      "topics": [
+        "Literary Influences",
+        "Creative Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "works_on",
+      "object": "coffee table"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": false,
+      "source_text": "I finished a coffee table last weekend!",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "likes",
+      "object": "blues music"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I also have a soft spot for blues when I want something more soulful.",
+      "speaker": "Alex",
+      "topics": [
+        "Music Genre",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "has hobby",
+      "object": "painting watercolors"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete_summary",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": true,
+      "source_text": "I paint watercolors and write stories inspired by Emily Dickinson and Virginia Woolf",
+      "speaker": "Sophia",
+      "topics": [
+        "Hobbies",
+        "Creative Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "has_hobby",
+      "object": "writing short stories"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I love writing short stories - Emily Dickinson and Virginia Woolf are particular inspirations of mine.",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Creative Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "enjoys",
+      "object": "classical music"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete_summary",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": true,
+      "source_text": "I enjoy classical music, folk, and blues",
+      "speaker": "Sophia",
+      "topics": [
+        "Music Genre",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "has_hobby",
+      "object": "rock climbing"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I also enjoy rock climbing, especially outdoor routes.",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "engages in",
+      "object": "woodworking"
+    },
+    "metadata": {
+      "source": "conversation:1748189977.7472358:complete_summary",
+      "timestamp": 1748189977.7472358,
+      "is_from_summary": true,
+      "source_text": "I surf and woodwork furniture.",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "creates",
+      "object": "watercolor paintings"
+    },
+    "metadata": {
+      "source": "conversation:1748189977.7472358:complete_summary",
+      "timestamp": 1748189977.7472358,
+      "is_from_summary": true,
+      "source_text": "paint watercolors, and write stories...",
+      "speaker": "Sophia",
+      "topics": [
+        "Creative Interests",
+        "Artistic Pursuits"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "loves",
+      "object": "Italian cuisine"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete_summary",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": true,
+      "source_text": "I like Italian food, especially pasta with tomatoes and garlic",
+      "speaker": "Sophia",
+      "topics": [
+        "Food Preference",
+        "Cultural Interest"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "has hobby",
+      "object": "surfing and woodworking"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete_summary",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": true,
+      "source_text": "I also enjoy surfing and woodworking",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Outdoor Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "paints",
+      "object": "watercolor"
+    },
+    "metadata": {
+      "source": "conversation:1748191457.4541047:complete_summary",
+      "timestamp": 1748191457.4541047,
+      "is_from_summary": true,
+      "source_text": "I painted a sunset scene in watercolor",
+      "speaker": "Sophia",
+      "topics": [
+        "Hobbies",
+        "Artistic Interest"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "has birthday on",
+      "object": "September 3"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete_summary",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": true,
+      "source_text": "I have a birthday on September 3",
+      "speaker": "Alex",
+      "topics": [
+        "Personal Details",
+        "Biography"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "has_hobby",
+      "object": "surfing"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I love surfing and woodworking, especially making furniture.",
+      "speaker": "Alex",
+      "topics": [
+        "Hobbies",
+        "Leisure Activities"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Sophia",
+      "predicate": "loves",
+      "object": "Italian food"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": false,
+      "source_text": "I absolutely love Italian food - especially pasta dishes with fresh tomatoes and garlic.",
+      "speaker": "Alex",
+      "topics": [
+        "Food Preference",
+        "Personal Interests"
+      ]
+    }
+  },
+  {
+    "triple": {
+      "subject": "Alex",
+      "predicate": "enjoys",
+      "object": "barbecue with fish tacos"
+    },
+    "metadata": {
+      "source": "conversation:1748191421.239562:complete_summary",
+      "timestamp": 1748191421.239562,
+      "is_from_summary": true,
+      "source_text": "I'll have a barbecue with fish tacos",
+      "speaker": "Alex",
+      "topics": [
+        "Event Planning",
+        "Food Preference"
+      ]
+    }
+  }
+]

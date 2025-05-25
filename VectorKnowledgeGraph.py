@@ -12,9 +12,10 @@ from qdrant_client.http.models import Distance, VectorParams
 import networkx as nx
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 import logging
 from datetime import datetime
+from utils import setup_logging # Added import
 
 # Load environment variables
 load_dotenv()
@@ -26,18 +27,32 @@ class VectorKnowledgeGraph:
         
         Args:
             embedding_model: Optional pre-configured embedding model
-            embedding_dim: Optional embedding dimension
+            embedding_dim: Optional embedding dimension (integer)
             path: Path to store graph data
         """
         logging.debug(f"Initializing VectorKnowledgeGraph with path: {path}")
         if embedding_model is None:
             logging.debug("Using default embedding model")
             self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2'))
-            self.embedding_dim = int(os.getenv('EMBEDDING_DIM', 384))
+            # Ensure embedding_dim has a default integer value
+            try:
+                self.embedding_dim: int = int(os.getenv('EMBEDDING_DIM', 384))
+            except ValueError:
+                logging.warning("Invalid EMBEDDING_DIM from env, using default 384")
+                self.embedding_dim = 384
         else:
             logging.debug("Using provided embedding model")
             self.embedding_model = embedding_model
-            self.embedding_dim = embedding_dim
+            if embedding_dim is None:
+                logging.warning("embedding_dim not provided with custom model, attempting to infer or defaulting to 384")
+                # Attempt to infer, or use a common default if not easily inferable
+                if hasattr(self.embedding_model, 'get_sentence_embedding_dimension'):
+                    self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
+                else:
+                    self.embedding_dim = 384 # Default if cannot infer
+                    logging.warning(f"Could not infer embedding_dim, defaulted to {self.embedding_dim}")
+            else:
+                self.embedding_dim = embedding_dim
 
         # Ensure the directory exists
         self.save_path = path
@@ -63,14 +78,15 @@ class VectorKnowledgeGraph:
                 vectors_config={
                     "subject": VectorParams(size=self.embedding_dim, distance=Distance.COSINE),
                     "relationship": VectorParams(size=self.embedding_dim, distance=Distance.COSINE),
-                    "object": VectorParams(size=self.embedding_dim, distance=Distance.COSINE)
+                    "object": VectorParams(size=self.embedding_dim, distance=Distance.COSINE),
+                    "topic_vector": VectorParams(size=self.embedding_dim, distance=Distance.COSINE)  # Added topic_vector
                 }
             )
             logging.info("Collection created successfully")
         else:
             logging.debug("Collection already exists")
 
-    def add_triples(self, triples: List[Tuple[str, str, str]], metadata: List[Dict[str, Any]] = None):
+    def add_triples(self, triples: List[Tuple[str, str, str]], metadata: Optional[List[Dict[str, Any]]] = None): # metadata can be None
         """
         Add triples to the knowledge graph with their embeddings and metadata.
         
@@ -79,29 +95,80 @@ class VectorKnowledgeGraph:
             metadata: Optional list of metadata dictionaries for each triple
         """
         logging.info(f"Adding {len(triples)} triples to knowledge graph")
+        if not triples:
+            logging.warning("No triples provided to add_triples method.")
+            return
+            
         if metadata is None:
             metadata = [{} for _ in triples]
             logging.debug("No metadata provided, using empty metadata")
+        elif len(metadata) != len(triples):
+            logging.warning("Mismatch between number of triples and metadata entries. Using empty metadata for safety.")
+            metadata = [{} for _ in triples] # Fallback to empty if mismatch
 
         # Generate embeddings for each component
         logging.debug("Generating embeddings for triples")
         subjects, relationships, objects = zip(*triples)
-        subject_embeddings = self.embedding_model.encode(subjects)
-        relationship_embeddings = self.embedding_model.encode(relationships)
-        object_embeddings = self.embedding_model.encode(objects)
+        
+        # Convert tuples from zip to lists for SentenceTransformer
+        subject_embeddings = self.embedding_model.encode(list(subjects))
+        relationship_embeddings = self.embedding_model.encode(list(relationships))
+        object_embeddings = self.embedding_model.encode(list(objects))
+        
+        # Generate embeddings for topics
+        topic_embeddings = []
+        for meta in metadata:
+            triple_topics = meta.get("topics", [])
+            if triple_topics and isinstance(triple_topics, list) and all(isinstance(t, str) for t in triple_topics):
+                concatenated_topics = " ".join(triple_topics)
+                topic_embeddings.append(self.embedding_model.encode([concatenated_topics])[0])
+            else:
+                # Use a zero vector if no topics or invalid format
+                topic_embeddings.append(np.zeros(self.embedding_dim))
+        
         logging.debug("Embeddings generated successfully")
         
         # Prepare points for Qdrant insertion
         logging.debug("Preparing points for Qdrant insertion")
         points = []
-        for i, (triple, s_emb, r_emb, o_emb, meta) in enumerate(zip(triples, subject_embeddings, relationship_embeddings, object_embeddings, metadata)):
+        for i, (triple, s_emb, r_emb, o_emb, t_emb, meta) in enumerate(zip(triples, subject_embeddings, relationship_embeddings, object_embeddings, topic_embeddings, metadata)):
             subject, relationship, obj = triple
+            # Ensure unique ID, for example, by using a combination of current time and index, or UUIDs
+            # For simplicity, using index i, but this assumes add_triples is called sequentially or IDs are managed externally
+            # A more robust ID would be `str(uuid.uuid4())` or a hash of the triple content.
+            # Using `self.qdrant_client.count(collection_name=self.collection_name).count + i` could also work if inserts are batched.
+            # For now, let's assume `i` is sufficient for this context, but flag for potential improvement.
+            # A simple way to get a unique ID for new points is to get the current count of points.
+            # However, this is not safe for concurrent additions.
+            # Let's use a timestamp + index for a bit more uniqueness in a single run.
+            # For production, a robust UUID or content hash is better.
+            # Qdrant recommends using your own IDs. If not provided, it generates them.
+            # Let's allow Qdrant to generate IDs by not specifying `id` or using `None`.
+            # Or, if we need to refer to them, we must generate them.
+            # The previous code used `i`. Let's stick to that for now, assuming it's within a single batch context.
+            # If `add_triples` is called multiple times, `i` will restart from 0, causing ID collisions.
+            # This needs to be addressed. A simple fix is to use a unique identifier.
+            # For now, let's use a placeholder for ID generation that needs to be robust.
+            # A common pattern is to use a hash of the content or a UUID.
+            # Let's use a simple counter based on existing points for this iteration.
+            # This is still not perfectly safe for concurrent writes.
+            # Qdrant can auto-generate IDs if you don't provide them.
+            # Let's try omitting the ID and let Qdrant handle it.
+            # Update: Qdrant requires IDs for `PointStruct`.
+            # We need a strategy for unique IDs.
+            # Simplest for now: use a large random number or hash of content.
+            # Let's use a hash of the triple itself for a deterministic ID.
+            import hashlib
+            triple_string = f"{subject}-{relationship}-{obj}"
+            point_id = hashlib.md5(triple_string.encode()).hexdigest()
+
             points.append(models.PointStruct(
-                id=i,
+                id=point_id, 
                 vector={
                     "subject": s_emb.tolist(),
                     "relationship": r_emb.tolist(),
-                    "object": o_emb.tolist()
+                    "object": o_emb.tolist(),
+                    "topic_vector": t_emb.tolist() # Added topic_vector
                 },
                 payload={
                     "subject": subject,
@@ -169,13 +236,14 @@ class VectorKnowledgeGraph:
         for hit in subject_results:
             if hit.id in common_triple_ids:
                 payload = hit.payload
-                triple = (payload["subject"], payload["relationship"], payload["object"])
-                similarity = hit.score
+                if payload:
+                    triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                    similarity = hit.score
 
-                if similarity >= similarity_threshold:
-                    collected_triples.append(triple)
-                    if return_metadata:
-                        collected_metadata.append(payload.get("metadata"))
+                    if similarity >= similarity_threshold:
+                        collected_triples.append(triple)
+                        if return_metadata:
+                            collected_metadata.append(payload.get("metadata"))
 
         logging.info(f"Found {len(collected_triples)} matching triples")
         if return_metadata:
@@ -227,11 +295,12 @@ class VectorKnowledgeGraph:
         
         # Return triples with complete metadata
         triples_with_metadata = []
-        for hit in results[0]:
+        for hit in results[0]: # results[0] contains the list of Hit objects
             payload = hit.payload
-            triple = (payload["subject"], payload["relationship"], payload["object"])
-            metadata = payload.get("metadata", {})
-            triples_with_metadata.append((triple, metadata))
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                metadata = payload.get("metadata", {})
+                triples_with_metadata.append((triple, metadata))
         
         logging.info(f"Found {len(triples_with_metadata)} triples matching metadata criteria")
         return triples_with_metadata
@@ -276,20 +345,145 @@ class VectorKnowledgeGraph:
         triples = []
         for point in all_points:
             payload = point.payload
-            triple = {
-                "subject": payload["subject"],
-                "predicate": payload["relationship"],
-                "object": payload["object"]
-            }
-            
-            # Add metadata if available
-            if "metadata" in payload:
-                triple["metadata"] = payload["metadata"]
-            
-            triples.append(triple)
+            if payload:
+                triple_data = {
+                    "subject": payload.get("subject"),
+                    "predicate": payload.get("relationship"),
+                    "object": payload.get("object")
+                }
+                
+                # Add metadata if available
+                if "metadata" in payload:
+                    triple_data["metadata"] = payload.get("metadata")
+                
+                triples.append(triple_data)
         
         logging.info(f"Retrieved {len(triples)} triples from knowledge graph")
         return triples
+
+    def find_triples_by_vectorized_topics(self, query_topics: List[str], return_metadata: bool = True, limit: int = 10, similarity_threshold: float = 0.7) -> List:
+        """
+        Find triples by vector similarity of their associated topics to the query topics.
+        This requires that topics for each triple were embedded and stored during ingestion as 'topic_vector'.
+
+        Args:
+            query_topics: A list of topic strings from the query.
+            return_metadata: Whether to return metadata along with the triples.
+            limit: Maximum number of results to return.
+            similarity_threshold: The minimum similarity score for a topic match.
+
+        Returns:
+            A list of (triple, metadata) tuples or just triples, matching the criteria.
+        """
+        logging.info(f"Finding triples by vectorized topics: {query_topics} with threshold: {similarity_threshold}")
+        if not query_topics or not all(isinstance(t, str) for t in query_topics):
+            logging.warning("query_topics list is empty or contains non-string elements. Returning no results.")
+            return []
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Concatenate query topics and generate embedding
+        concatenated_query_topics = " ".join(query_topics)
+        if not concatenated_query_topics.strip():
+            logging.warning("Concatenated query topics are empty. Returning no results.")
+            return []
+            
+        query_topic_embedding = self.embedding_model.encode([concatenated_query_topics])[0]
+
+        logging.debug(f"Searching with topic vector against collection: {self.collection_name}")
+        search_results = self.qdrant_client.search(
+            collection_name=self.collection_name,
+            query_vector=("topic_vector", query_topic_embedding.tolist()), # Search against 'topic_vector'
+            limit=limit,
+            score_threshold=similarity_threshold, # Qdrant uses score_threshold for minimum similarity
+            with_payload=True,
+            with_vectors=False # We don't need the vectors themselves in the result
+        )
+
+        found_triples = []
+        for hit in search_results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    # Include the similarity score in the metadata for context
+                    metadata_with_score = {**metadata, "topic_similarity_score": hit.score}
+                    found_triples.append((triple, metadata_with_score))
+                else:
+                    # If not returning metadata, we might still want to convey the triple itself
+                    # or decide how to handle this case. For now, just the triple.
+                    found_triples.append(triple)
+        
+        logging.info(f"Found {len(found_triples)} triples matching vectorized topics with score >= {similarity_threshold}")
+        return found_triples
+
+    def find_triples_by_topic_tags(self, topics_to_match: List[str], return_metadata: bool = True, limit: int = 1000) -> List:
+        """
+        Find triples where the 'topics' list in their metadata contains any of the specified topic strings.
+
+        Args:
+            topics_to_match: A list of topic strings to search for.
+            return_metadata: Whether to return metadata along with the triples.
+            limit: Maximum number of results to return.
+
+        Returns:
+            A list of (triple, metadata) tuples or just triples, matching the criteria.
+        """
+        logging.info(f"Finding triples by topic tags: {topics_to_match}")
+        if not topics_to_match:
+            logging.warning("topics_to_match list is empty. Returning no results.")
+            return []
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Construct the filter for matching any of the topics in the 'metadata.topics' array
+        # Ensure that topics_to_match contains only non-empty strings
+        valid_topics_to_match = [topic for topic in topics_to_match if topic and isinstance(topic, str)]
+        if not valid_topics_to_match:
+            logging.warning("All topics in topics_to_match are empty or invalid. Returning no results.")
+            return []
+            
+        topic_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.topics",  # Assuming topics are stored in metadata.topics
+                    match=models.MatchAny(
+                        any=valid_topics_to_match
+                    )
+                )
+            ]
+        )
+
+        logging.debug(f"Executing scroll query with topic filter: {topic_filter}")
+        # Using scroll to get all matching results up to the limit
+        results, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=topic_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False  # Vectors are not needed for this type of query
+        )
+
+        found_triples = []
+        for hit in results: # Iterate directly over results (list of Record)
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+        
+        logging.info(f"Found {len(found_triples)} triples matching topic tags: {valid_topics_to_match}")
+        return found_triples
 
     def save(self, path=""):
         """Save is now handled automatically by Qdrant's local storage"""
@@ -335,17 +529,19 @@ class VectorKnowledgeGraph:
             # Process subject matches
             for hit in subject_results:
                 payload = hit.payload
-                triple = (payload["subject"], payload["relationship"], payload["object"])
-                similarity = hit.score
+                if payload:
+                    triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                    similarity = hit.score
 
-                if similarity >= similarity_threshold:
-                    collected_triples.append(triple)
-                    if return_metadata:
-                        collected_metadata.append(payload.get("metadata"))
+                    if similarity >= similarity_threshold:
+                        collected_triples.append(triple)
+                        if return_metadata:
+                            collected_metadata.append(payload.get("metadata"))
 
                     # Recurse on the object if it hasn't been visited
-                    if payload["object"] not in visited:
-                        recursive_search(payload["object"], current_depth + 1)
+                    object_val = payload.get("object")
+                    if object_val and object_val not in visited:
+                        recursive_search(object_val, current_depth + 1)
 
         # Kick off the recursive search from the query point
         recursive_search(query, 0)
@@ -387,15 +583,17 @@ class VectorKnowledgeGraph:
             # Process subject matches
             for hit in subject_results:
                 payload = hit.payload
-                similarity = hit.score
+                if payload:
+                    similarity = hit.score
 
-                if similarity >= similarity_threshold:
-                    G.add_edge(payload["subject"], payload["object"], 
-                             weight=similarity, 
-                             label=f'Similarity: {similarity:.2f}')
+                    if similarity >= similarity_threshold:
+                        G.add_edge(payload.get("subject"), payload.get("object"), 
+                                 weight=similarity, 
+                                 label=f'Similarity: {similarity:.2f}')
 
-                    if payload["object"] not in visited:
-                        recursive_search(payload["object"], current_depth + 1)
+                        object_val = payload.get("object")
+                        if object_val and object_val not in visited:
+                            recursive_search(object_val, current_depth + 1)
 
         for query in queries:
             recursive_search(query, 0)

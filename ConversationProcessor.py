@@ -130,8 +130,8 @@ class ConversationProcessor:
             result['processing_time'] = time.time() - start_time
             
             # Log extracted triples
-            original_extracted = result.get('original_triples', {}).get('triples', [])
-            summary_extracted = result.get('summary_triples', {}).get('triples', [])
+            original_extracted = result.get('original_triples', []) # Directly get the list
+            summary_extracted = result.get('summary_triples', [])   # Directly get the list
             self.logger.info(f"Processed {len(filtered_messages)} messages in {result['processing_time']:.2f}s")
             self.logger.debug(f"Conversation original triples ({len(original_extracted)}): {original_extracted}")
             self.logger.debug(f"Conversation summary triples ({len(summary_extracted)}): {summary_extracted}")
@@ -153,9 +153,9 @@ class ConversationProcessor:
         if entity_references:
             self._create_entity_reference_triples(entity_references, global_timestamp)
     
-    def query_conversation_memory(self, query: str, entity_name: str = None, 
+    def query_conversation_memory(self, query: str, entity_name: Optional[str] = None, 
                                  limit: int = 10, min_confidence: float = 0.6,
-                                 speaker: str = None) -> Dict:
+                                 speaker: Optional[str] = None) -> Dict:
         """
         Query the semantic memory for conversation-related information.
         
@@ -265,9 +265,6 @@ class ConversationProcessor:
                 "source": f"entity_resolution:{timestamp}",
                 "timestamp": timestamp,
                 "is_from_summary": False,
-                "subject_properties": {},
-                "verb_properties": {},
-                "object_properties": {},
                 "source_text": f"{generic_entity} refers to {specific_name}",
                 "speaker": "system"
             }
@@ -282,9 +279,6 @@ class ConversationProcessor:
                 "source": f"entity_resolution:{timestamp}",
                 "timestamp": timestamp,
                 "is_from_summary": False,
-                "subject_properties": {},
-                "verb_properties": {},
-                "object_properties": {},
                 "source_text": f"{specific_name} is referenced by {generic_entity}",
                 "speaker": "system"
             }
@@ -334,4 +328,4 @@ if __name__ == "__main__":
     # 
     # print(f"Found {len(query_result['triples'])} related memories")
     # if query_result['summary']:
-    #     print(f"Summary: {query_result['summary']}") 
+    #     print(f"Summary: {query_result['summary']}")

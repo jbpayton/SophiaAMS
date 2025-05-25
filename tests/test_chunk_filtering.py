@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import time
 import json
@@ -6,6 +7,9 @@ import shutil
 from datetime import datetime
 import re
 from typing import List, Dict
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from DocumentProcessor import WebPageSource
 from utils import setup_logging
@@ -94,7 +98,7 @@ def check_for_false_classifications(analysis: Dict) -> List[Dict]:
 def test_vocaloid_filtering():
     """Test the WebPageSource's filtering capabilities with the Vocaloid Wikipedia page."""
     # Set up logging
-    log_file = f"chunk_filter_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    log_file = f"test-output/chunk_filter_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     setup_logging(debug_mode=True, log_file=log_file)
     logging.info("Starting chunk filtering test on Vocaloid Wikipedia page")
     

@@ -109,7 +109,8 @@ Summary:"""
             temperature=0.3,  # Lower temperature for more focused summaries
         )
         
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        return content.strip() if content is not None else ""
 
     def generate_verbose_summary(self, text: str) -> str:
         """

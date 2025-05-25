@@ -6,8 +6,13 @@ Extracted from DocumentProcessor.py for better code organization.
 import time
 import logging
 import os
+import sys
 import shutil
 from datetime import datetime
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from DocumentProcessor import DocumentProcessor, WebPageSource
 from AssociativeSemanticMemory import AssociativeSemanticMemory
 from VectorKnowledgeGraph import VectorKnowledgeGraph
@@ -17,7 +22,7 @@ from utils import setup_logging
 def run_document_processor_test():
     """Run comprehensive tests for the document processor."""
     # Set up debug logging for testing
-    log_file = f"document_processor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    log_file = f"test-output/document_processor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     setup_logging(debug_mode=True, log_file=log_file)
     logging.info("Starting document processor test run")
     
@@ -33,7 +38,7 @@ def run_document_processor_test():
     
     # Initialize the semantic memory
     logging.info("Initializing semantic memory")
-    kgraph = VectorKnowledgeGraph(path="Test_DocumentProcessing")
+    kgraph = VectorKnowledgeGraph(path="test-output/Test_DocumentProcessing")
     memory = AssociativeSemanticMemory(kgraph)
     processor = DocumentProcessor(memory)
     
@@ -129,6 +134,10 @@ def _test_queries(memory, logging):
                     summary = memory.summarize_results(related)
                     logging.info(summary)
                     logging.info(f"Summary generation time: {time.time() - summary_start:.2f}s")
+                    # Verify topics in related triples
+                    for rel_triple, rel_metadata in related:
+                        assert "topics" in rel_metadata, f"Topics field missing in related triple metadata: {rel_metadata}"
+                        assert isinstance(rel_metadata['topics'], list), f"Topics field is not a list in related triple: {rel_metadata['topics']}"
                 except Exception as e:
                     logging.error(f"Error generating summary: {str(e)}")
                     logging.info("Attempting to summarize with fewer triples...")

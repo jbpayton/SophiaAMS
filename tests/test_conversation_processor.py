@@ -14,12 +14,16 @@ python test_conversation_processor.py
 
 import logging
 import os
+import sys
 import time
 import json
 import atexit
 import shutil
 from datetime import datetime
 from typing import Dict, List
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ConversationProcessor import ConversationProcessor
 from AssociativeSemanticMemory import AssociativeSemanticMemory
@@ -28,12 +32,12 @@ from utils import setup_logging
 
 # Setup logging
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-log_file = f"conversation_processor_test_{timestamp}.log"
+log_file = f"test-output/conversation_processor_test_{timestamp}.log"
 setup_logging(debug_mode=True, log_file=log_file)
 logger = logging.getLogger('test_conversation_processor')
 
 # Test directory for the knowledge graph
-TEST_DIR = "Test_ConversationMemory"
+TEST_DIR = "test-output/Test_ConversationMemory"
 
 def cleanup_test_directory():
     """Clean up the test directory, ensuring all resources are released first."""
@@ -297,6 +301,10 @@ def analyze_extracted_triples(export_file):
         
         # Check speaker accuracy based on subject
         subject = triple['triple']['subject'].lower()
+        # Ensure topics are present
+        assert "topics" in triple['metadata'], f"Topics field missing in triple metadata: {triple['metadata']}"
+        assert isinstance(triple['metadata']['topics'], list), f"Topics field is not a list: {triple['metadata']['topics']}"
+        
         if speaker == 'Alex' and 'alex' in subject:
             speaker_accuracy['correct'] += 1
         elif speaker == 'Sophia' and 'sophia' in subject:
@@ -708,4 +716,4 @@ def main():
         logger.info("Test completed")
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -4,7 +4,7 @@ import time
 from typing import Dict, List, Optional, Union
 from openai import OpenAI
 from dotenv import load_dotenv
-from prompts import TRIPLE_EXTRACTION_PROMPT, CONVERSATION_TRIPLE_EXTRACTION_PROMPT
+from prompts import TRIPLE_EXTRACTION_PROMPT, CONVERSATION_TRIPLE_EXTRACTION_PROMPT, QUERY_EXTRACTION_PROMPT
 from schemas import TRIPLE_EXTRACTION_SCHEMA
 
 # Load environment variables
@@ -20,6 +20,7 @@ def extract_triples_from_string(
 ) -> Dict:
     """
     Extract semantic triples from a text string.
+    Topics are now an integral part of each triple.
     
     Args:
         text: Input text to extract triples from
@@ -41,20 +42,28 @@ def extract_triples_from_string(
     # Format: SPEAKER:name|content
     text_to_extract = text
     extracted_speaker = speaker
-    
     if not is_query and text.startswith("SPEAKER:"):
         try:
             speaker_parts = text.split("|", 1)
             if len(speaker_parts) == 2:
                 extracted_speaker = speaker_parts[0].replace("SPEAKER:", "").strip()
                 text_to_extract = speaker_parts[1].strip()
+            # If speaker is not explicitly provided in the text, and it's not a query,
+            # and a speaker argument was passed, use that.
+            # Otherwise, it remains None or the parsed speaker.
         except Exception:
             # If parsing fails, just use the original text
             text_to_extract = text
+    elif speaker: # If speaker is provided as an argument and not parsed from text
+        extracted_speaker = speaker
+    # If no speaker is identified from text or arguments, it defaults to None.
+    # For general documents, speaker will often be None.
     
     # Choose the appropriate prompt based on content type
     if is_conversation:
         prompt = CONVERSATION_TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
+    elif is_query:
+        prompt = QUERY_EXTRACTION_PROMPT.format(text=text_to_extract)
     else:
         prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
     
@@ -62,24 +71,39 @@ def extract_triples_from_string(
     response = client.chat.completions.create(
         model=os.getenv('EXTRACTION_MODEL', 'gemma-3-4b-it-qat'),
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "schema": TRIPLE_EXTRACTION_SCHEMA
-            }
-        }
+        temperature=0.0
     )
     
     # Parse the response
-    try:
-        result = json.loads(response.choices[0].message.content)
+    try:        
+        content = response.choices[0].message.content
+        if content:
+            # Attempt to strip <think>...</think> block if present
+            think_start_tag = "<think>"
+            think_end_tag = "</think>"
+            if content.strip().startswith(think_start_tag) and think_end_tag in content:
+                think_end_index = content.rfind(think_end_tag)
+                json_content_start = think_end_index + len(think_end_tag)
+                actual_json_content = content[json_content_start:].strip()
+                if actual_json_content: # Ensure there is content after stripping
+                    result = json.loads(actual_json_content)
+                else: # If stripping results in empty string, means JSON was missing or malformed
+                    print(f"Warning: Stripped <think> block, but no subsequent JSON content found. Raw content: {content}")
+                    result = {"triples": []}
+
+            else: # No <think> block detected, try to parse directly
+                result = json.loads(content)
+        else:
+            result = {"triples": []}
+        
         timestamp = timestamp or time.time()
         
-        # Add speaker to each triple
+        # Add speaker to each triple if not already present from LLM
         for triple in result.get("triples", []):
-            triple["speaker"] = extracted_speaker
-              # For summary triples, try to infer speaker from the subject if not already set
+            if "speaker" not in triple or triple["speaker"] is None:
+                triple["speaker"] = extracted_speaker
+            
+            # For summary triples, try to infer speaker from the subject if not already set
             if source and "_summary" in source and not extracted_speaker:
                 subject_text = triple.get("subject", "").lower()
                 # Common entity names
@@ -88,23 +112,31 @@ def extract_triples_from_string(
                 elif subject_text in ["alex", "user"]:
                     triple["speaker"] = "Alex"
         
+        # Speaker information is now expected to be part of the triples 
+        # returned by the LLM if the prompt requests it (e.g. for conversation_triple_extraction)
+        # or added by the logic above for summary triples.
+        # Topic triples are also expected to be directly in the result["triples"] list.
+
         # For queries, we want to return the extracted triples directly
         if is_query:
-            return {
-                "query_triples": result["triples"],
+            query_result = {
+                "query_triples": result.get("triples", []),
                 "timestamp": timestamp,
                 "text": text_to_extract,
-                "speaker": extracted_speaker
+                "speaker": extracted_speaker # This will be "user" for queries as per prompt
             }
+            return query_result
         
         # For regular extraction, return with metadata
-        return {
-            "triples": result["triples"],
+        extraction_result = {
+            "triples": result.get("triples", []),
             "source": source,
             "timestamp": timestamp,
             "text": text_to_extract,
             "speaker": extracted_speaker
         }
+        
+        return extraction_result
     except Exception as e:
         print(f"Error parsing response: {e}")
         print(f"Raw response: {response.choices[0].message.content}")

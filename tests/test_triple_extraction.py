@@ -4,6 +4,12 @@ Test script to verify the improved triple extraction with better verb handling.
 """
 
 import json
+import os
+import sys
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from triple_extraction import extract_triples_from_string
 
 def test_conversation_extraction():
@@ -28,6 +34,9 @@ SPEAKER:Sophia|That's awesome! I'm a software engineer at Google and my birthday
         print(f"   Object: {triple.get('object')}")
         print(f"   Speaker: {triple.get('speaker')}")
         print(f"   Source: {triple.get('source_text')}")
+        print(f"   Topics: {triple.get('topics')}")
+        assert "topics" in triple, "Triple should have a 'topics' field"
+        assert isinstance(triple.get("topics"), list), "Topics should be a list"
         print()
 
 def test_document_extraction():
@@ -49,7 +58,12 @@ def test_document_extraction():
         print(f"{i}. Subject: {triple.get('subject')}")
         print(f"   Verb: {triple.get('verb')}")
         print(f"   Object: {triple.get('object')}")
+        speaker = triple.get('speaker')
+        print(f"   Speaker: {speaker if speaker is not None else 'N/A'}")
         print(f"   Source: {triple.get('source_text')}")
+        print(f"   Topics: {triple.get('topics')}")
+        assert "topics" in triple, "Triple should have a 'topics' field"
+        assert isinstance(triple.get("topics"), list), "Topics should be a list"
         print()
 
 if __name__ == "__main__":

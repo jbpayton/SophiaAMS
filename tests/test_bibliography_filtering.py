@@ -14,6 +14,9 @@ import sys
 from datetime import datetime
 import os
 
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from DocumentProcessor import WebPageSource
 from utils import setup_logging
 
@@ -33,7 +36,7 @@ TEST_URLS = [
 ]
 
 # File to store the latest chunk log filename
-LATEST_CHUNK_LOG_FILE = "latest_chunk_log.txt"
+LATEST_CHUNK_LOG_FILE = "test-output/latest_chunk_log.txt"
 
 def process_url_and_report(url, verbose=False):
     """Process a URL and report on how well bibliography sections were filtered."""
@@ -110,7 +113,7 @@ def main():
     
     # Set up logging
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = f"bibliography_test_{timestamp}.log"
+    log_file = f"test-output/bibliography_test_{timestamp}.log"
     # Ensure log file is distinct from main document processor log
     # if 'run_document_processor' in logging.root.manager.loggerDict:
     #     del logging.root.manager.loggerDict['run_document_processor'] 
@@ -140,7 +143,7 @@ def main():
     
     # Save results
     if results:
-        output_file = f"bibliography_filtering_results_{timestamp}.json"
+        output_file = f"test-output/bibliography_filtering_results_{timestamp}.json"
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2)
         print(f"\nResults saved to {output_file}")

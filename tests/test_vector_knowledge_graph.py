@@ -1,4 +1,8 @@
 import os
+import sys
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
 from VectorKnowledgeGraph import VectorKnowledgeGraph
 from triple_extraction import extract_triples_from_string
@@ -6,10 +10,8 @@ import time
 
 def main():
     # Load environment variables
-    load_dotenv()
-
-    # Create the knowledge graph
-    kgraph = VectorKnowledgeGraph(path="Test_GraphStoreMemory")
+    load_dotenv()    # Create the knowledge graph
+    kgraph = VectorKnowledgeGraph(path="test-output/Test_GraphStoreMemory")
 
     # Example text to process
     text = """Rachel is a young vampire girl with pale skin, long blond hair tied into two pigtails with black 
@@ -33,9 +35,6 @@ def main():
         meta = {
             "reference": "https://example.com/rachel",
             "timestamp": time.time(),
-            "subject_properties": triple_data["subject"]["properties"],
-            "verb_properties": triple_data["verb"]["properties"],
-            "object_properties": triple_data["object"]["properties"],
             "source_text": triple_data["source_text"]
         }
         metadata_list.append(meta)
@@ -49,11 +48,6 @@ def main():
     print(f"Results for query '{query}':")
     for triple in results:
         print(triple)
-
-    # Get a summary
-    summary = kgraph.summarize_graph(results)
-    print("\nSummary:")
-    print(summary)
 
 if __name__ == "__main__":
     main() 

@@ -1,8 +1,12 @@
 import json
 import logging
 import os
+import sys
 import shutil
 from datetime import datetime
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from AssociativeSemanticMemory import AssociativeSemanticMemory
 from DocumentProcessor import DocumentProcessor, WebPageSource
@@ -11,12 +15,12 @@ from utils import setup_logging
 
 if __name__ == "__main__":
     # Set up debug logging for testing
-    log_file = f"export_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    log_file = f"test-output/export_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     setup_logging(debug_mode=True, log_file=log_file)
     logging.info("Starting test of triples export functionality")
     
     # Initialize the components
-    kgraph = VectorKnowledgeGraph(path="Test_ExportTriples")
+    kgraph = VectorKnowledgeGraph(path="test-output/Test_ExportTriples")
     memory = AssociativeSemanticMemory(kgraph)
     processor = DocumentProcessor(memory)
     

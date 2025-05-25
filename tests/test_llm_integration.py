@@ -1,4 +1,8 @@
 import os
+import sys
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
 from openai import OpenAI
 from VectorKnowledgeGraph import VectorKnowledgeGraph
@@ -7,10 +11,8 @@ import time
 
 def test_llm_integration():
     # Load environment variables
-    load_dotenv()
-
-    # Create the knowledge graph
-    kgraph = VectorKnowledgeGraph(path="Test_LLM_GraphStoreMemory")
+    load_dotenv()    # Create the knowledge graph
+    kgraph = VectorKnowledgeGraph(path="test-output/Test_LLM_GraphStoreMemory")
 
     # Example text to process
     text = """Rachel is a young vampire girl with pale skin, long blond hair tied into two pigtails with black 
@@ -34,9 +36,6 @@ def test_llm_integration():
         meta = {
             "reference": "https://example.com/rachel",
             "timestamp": time.time(),
-            "subject_properties": triple_data["subject"]["properties"],
-            "verb_properties": triple_data["verb"]["properties"],
-            "object_properties": triple_data["object"]["properties"],
             "source_text": triple_data["source_text"]
         }
         metadata_list.append(meta)
@@ -52,12 +51,10 @@ def test_llm_integration():
         print(triple)
 
     # Visualize the graph
-    kgraph.visualize_graph_from_nouns([query], similarity_threshold=0.7, depth=1)
-
-    # Clean up test data
-    if os.path.exists("Test_LLM_GraphStoreMemory"):
+    kgraph.visualize_graph_from_nouns([query], similarity_threshold=0.7, depth=1)    # Clean up test data
+    if os.path.exists("test-output/Test_LLM_GraphStoreMemory"):
         import shutil
-        shutil.rmtree("Test_LLM_GraphStoreMemory")
+        shutil.rmtree("test-output/Test_LLM_GraphStoreMemory")
 
 if __name__ == "__main__":
     test_llm_integration() 
