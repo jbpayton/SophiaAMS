@@ -94,9 +94,9 @@ class AssociativeSemanticMemory:
         logging.debug("Processing original triples")
         for triple_data in original_triples.get("triples", []):
             try:
-                subject = triple_data["subject"]["text"]
-                relationship = triple_data["verb"]["text"]
-                obj = triple_data["object"]["text"]
+                subject = triple_data["subject"]
+                relationship = triple_data["verb"]
+                obj = triple_data["object"]
                 all_triples.append((subject, relationship, obj))
                 
                 # Get speaker from the triple if available, otherwise use the global speaker
@@ -106,9 +106,9 @@ class AssociativeSemanticMemory:
                     "source": source,
                     "timestamp": original_triples["timestamp"],
                     "is_from_summary": False,
-                    "subject_properties": triple_data["subject"].get("properties", {}),
-                    "verb_properties": triple_data["verb"].get("properties", {}),
-                    "object_properties": triple_data["object"].get("properties", {}),
+                    "subject_properties": {},  # Simplified: no longer using complex modifiers
+                    "verb_properties": {},     # Simplified: no longer using complex modifiers
+                    "object_properties": {},   # Simplified: no longer using complex modifiers
                     "source_text": triple_data.get("source_text", ""),
                     "speaker": triple_speaker  # Use the extracted speaker
                 }
@@ -122,9 +122,9 @@ class AssociativeSemanticMemory:
         logging.debug("Processing summary triples")
         for triple_data in summary_triples.get("triples", []):
             try:
-                subject = triple_data["subject"]["text"]
-                relationship = triple_data["verb"]["text"]
-                obj = triple_data["object"]["text"]
+                subject = triple_data["subject"]
+                relationship = triple_data["verb"]
+                obj = triple_data["object"]
                 all_triples.append((subject, relationship, obj))
                 
                 # Get speaker from the triple if available, otherwise use the global speaker
@@ -134,9 +134,9 @@ class AssociativeSemanticMemory:
                     "source": f"{source}_summary",
                     "timestamp": summary_triples["timestamp"],
                     "is_from_summary": True,
-                    "subject_properties": triple_data["subject"].get("properties", {}),
-                    "verb_properties": triple_data["verb"].get("properties", {}),
-                    "object_properties": triple_data["object"].get("properties", {}),
+                    "subject_properties": {},  # Simplified: no longer using complex modifiers
+                    "verb_properties": {},     # Simplified: no longer using complex modifiers
+                    "object_properties": {},   # Simplified: no longer using complex modifiers
                     "source_text": triple_data.get("source_text", ""),
                     "speaker": triple_speaker  # Use the extracted speaker
                 }
@@ -189,8 +189,8 @@ class AssociativeSemanticMemory:
         for triple_data in query_triples:
             try:
                 # Get query components
-                subject = triple_data["subject"]["text"]
-                obj = triple_data["object"]["text"]
+                subject = triple_data["subject"]
+                obj = triple_data["object"]
                 
                 # Get references if requested
                 subject_references = []

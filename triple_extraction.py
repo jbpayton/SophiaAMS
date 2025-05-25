@@ -79,10 +79,9 @@ def extract_triples_from_string(
         # Add speaker to each triple
         for triple in result.get("triples", []):
             triple["speaker"] = extracted_speaker
-            
-            # For summary triples, try to infer speaker from the subject if not already set
+              # For summary triples, try to infer speaker from the subject if not already set
             if source and "_summary" in source and not extracted_speaker:
-                subject_text = triple.get("subject", {}).get("text", "").lower()
+                subject_text = triple.get("subject", "").lower()
                 # Common entity names
                 if subject_text in ["sophia", "assistant"]:
                     triple["speaker"] = "Sophia"

@@ -575,8 +575,7 @@ def main():
         print("   This may take a moment as we extract detailed relationships...")
         result = processor.process_conversation(
             messages=first_conversation,
-            entity_name="Sophia"
-        )
+            entity_name="Sophia"        )
         
         if result['success']:
             print(f"✅ Successfully processed conversation with {result['processed_messages']} messages")
@@ -584,6 +583,7 @@ def main():
         else:
             print(f"❌ Failed to process conversation: {result.get('error', 'Unknown error')}")
             logger.error(f"Failed to process conversation: {result.get('error', 'Unknown error')}")
+            return
         
         # Wait a moment to let processing complete
         print("⏳ Allowing memory consolidation...")

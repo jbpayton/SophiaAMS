@@ -6,30 +6,9 @@ TRIPLE_EXTRACTION_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "subject": {
-                        "type": "object",
-                        "properties": {
-                            "text": {"type": "string"},
-                            "modifiers": {"type": "object"}
-                        },
-                        "required": ["text", "modifiers"]
-                    },
-                    "verb": {
-                        "type": "object",
-                        "properties": {
-                            "text": {"type": "string"},
-                            "modifiers": {"type": "object"}
-                        },
-                        "required": ["text", "modifiers"]
-                    },
-                    "object": {
-                        "type": "object",
-                        "properties": {
-                            "text": {"type": "string"},
-                            "modifiers": {"type": "object"}
-                        },
-                        "required": ["text", "modifiers"]
-                    },
+                    "subject": {"type": "string"},
+                    "verb": {"type": "string"},
+                    "object": {"type": "string"},
                     "source_text": {"type": "string"}
                 },
                 "required": ["subject", "verb", "object", "source_text"]
@@ -37,4 +16,4 @@ TRIPLE_EXTRACTION_SCHEMA = {
         }
     },
     "required": ["triples"]
-} 
+}

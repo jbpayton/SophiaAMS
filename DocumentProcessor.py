@@ -6,17 +6,17 @@ from urllib.parse import urlparse
 from AssociativeSemanticMemory import AssociativeSemanticMemory
 from VectorKnowledgeGraph import VectorKnowledgeGraph
 import os
-import shutil
 import json
 from openai import OpenAI
 import logging
 from datetime import datetime
 import tiktoken
-from utils import setup_logging
 import trafilatura
 from trafilatura.settings import use_config
 import re
 import spacy
+from spacy.cli.download import download
+from prompts import CONTENT_ANALYSIS_PROMPT, CHUNK_FILTERING_PROMPT
 
 # =============================================
 # Document Processing Classes
@@ -43,25 +43,6 @@ class DocumentSource:
         """Fetch and process content from the source."""
         raise NotImplementedError
 
-# Add content analysis prompt
-CONTENT_ANALYSIS_PROMPT = """
-Analyze this HTML content and identify the main content area. Look for:
-1. The primary article/content area
-2. Navigation/sidebar elements to exclude
-3. Footer/header elements to exclude
-
-Return a JSON object with:
-{{
-    "main_content_selectors": ["list", "of", "selectors"],
-    "exclude_selectors": ["list", "of", "selectors"],
-    "content_type": "wiki/article/blog/etc",
-    "confidence": "high/medium/low"
-}}
-
-HTML content:
-{content}
-"""
-
 class WebPageSource(DocumentSource):
     """Handles web page content extraction with proper chunking using Trafilatura."""
     
@@ -82,7 +63,7 @@ class WebPageSource(DocumentSource):
             self.nlp.add_pipe("sentencizer")
         except OSError:
             self.logger.warning("spaCy model not found. Downloading small English model...")
-            spacy.cli.download("en_core_web_sm")
+            download("en_core_web_sm")
             self.nlp = spacy.load("en_core_web_sm", disable=["tagger", "parser", "ner", "lemmatizer", "attribute_ruler"])
             self.nlp.add_pipe("sentencizer")
             
@@ -524,49 +505,21 @@ class WebPageSource(DocumentSource):
                 is_late_document = original_idx > (0.75 * len(chunks))
                 position_context = " (This chunk is from the end of the document)" if is_late_document else ""
                 batch_texts.append(f"CHUNK {j+1}{position_context}:\n{preview}\n")
-            
-            # PROMPT TO BE MODIFIED BY USER
-            prompt = f"""Review each text chunk. Your primary goal is to distinguish between:
-1. Informational/Explanatory Content: Text that explains, describes, or narrates a topic. This includes:
-    - Narrative paragraphs.
-    - Explanations that incorporate citations (e.g., [1], (Smith 2020)).
-    - Lists of features, characteristics, steps, components, examples, product/work titles (e.g., software versions, album names by the discussed artist), or other details that are *integral to and part of the main explanation* of the topic. These lists provide direct information *about the subject itself*, even if individual items within such lists are cited.
-    - Tables or infoboxes that present information directly related to the topic.
-    This content should be KEPT.
-
-2. External Reference & Pure Navigation Lists: Text that primarily serves to point to external resources, or is purely for navigating the document or related topics, rather than explaining the topic itself. This content should be DISCARDED. This includes:
-    a) Bibliographies, reference lists, or citation lists: Characterized by multiple itemized entries that primarily point to *external sources* (e.g., lists of articles, books, research papers, with details like authors, dates, titles, DOIs, external URLs).
-    b) Purely navigational sections: Such as lists of keywords for searching, "See Also" sections *that are predominantly collections of links or pointers to other topics/articles*, "External Links" sections, or sidebars that are just lists of links.
-    c) Tables of contents or indices: That are structured lists primarily for document navigation.
-
-GUIDELINES FOR DECISION:
-
-1.  **CRITICAL LIST EVALUATION (For any chunk that appears list-like, start here):**
-    *   First, identify what the **list items themselves** represent (momentarily ignore citations attached *to* these items or minor interspersed external links).
-    *   **KEEP THE CHUNK IF** the majority of these list items are: **factual details, characteristics, events, components, product names (e.g., different Vocaloid software versions, specific song titles from a Vocaloid artist's discography being discussed), technical specifications, or data points (e.g., chart positions for relevant works) *directly describing or belonging to the main document topic*.**
-        *   The presence of citations for these factual list items, or a few interspersed external links, does NOT automatically make the chunk discardable IF the core list items provide valuable, topic-specific information.
-    *   **DISCARD THE CHUNK IF** the list items *themselves* are predominantly: **bibliographic entries (Author, Title, Year, Publisher, external URL), or purely navigational links pointing to other articles/sections or external websites.**
-
-2.  **OVERALL CHUNK PURPOSE (For all chunks, reinforcing the list evaluation):**
-    *   Is the chunk's primary contribution to *explain or describe the topic at hand* (KEEP IT)? This includes narrative text and factual lists as defined above.
-    *   Or, is it primarily a *gateway to external information or for pure navigation* (DISCARD IT)? This includes bibliographies and lists of external links.
-
-3.  **CONTEXTUAL CUES:**
-    *   Chunks from the end of the document (indicated by "This chunk is from the end of the document") are more likely to be discardable external reference lists. However, if such a chunk contains a list of topic-specific factual data (e.g., a complete list of official product versions) or is a narrative conclusion, it should be KEPT based on the rules above.
-
-FORMAT YOUR ANSWER EXACTLY LIKE THIS (one line per chunk, provide a concise reason based on the distinctions above):
-CHUNK N: KEEP - Brief reason (e.g., Explains a core concept; Lists factual data about the topic like product features/events/technical specs; Describes components/history)
-CHUNK M: DISCARD - Brief reason (e.g., Primarily a list of external bibliographic sources; Navigational list of other topics/sites)
-CHUNK P (This chunk is from the end of the document): DISCARD - Brief reason (e.g., Bibliography section at end of document; List of external links at end)
-
-{chr(10).join(batch_texts)}
-"""
+              # PROMPT TO BE MODIFIED BY USER
+            prompt = CHUNK_FILTERING_PROMPT.format(batch_texts=chr(10).join(batch_texts))
 
             # System message to guide the LLM's role
+            from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
             messages = [
-                        {"role": "system", "content": "You are a content classifier. Your task is to accurately distinguish between: 1. Informational content (which may include explanatory lists and citations that are integral to the topic) and 2. Lists that primarily serve as external references or navigation. Your goal is to KEEP the informational content and DISCARD the external reference/navigation lists."},
-                        {"role": "user", "content": prompt}
-                    ]
+                ChatCompletionSystemMessageParam(
+                    role="system",
+                    content="You are a content classifier. Your task is to accurately distinguish between: 1. Informational content (which may include explanatory lists and citations that are integral to the topic) and 2. Lists that primarily serve as external references or navigation. Your goal is to KEEP the informational content and DISCARD the external reference/navigation lists."
+                ),
+                ChatCompletionUserMessageParam(
+                    role="user",
+                    content=prompt
+                )
+            ]
 
             try:
                 # Call the LLM API using your configuration
@@ -581,7 +534,12 @@ CHUNK P (This chunk is from the end of the document): DISCARD - Brief reason (e.
                 )
                 
                 # Process the results
-                results = response.choices[0].message.content.strip().split('\n')
+                content = response.choices[0].message.content
+                if content is not None:
+                    results = content.strip().split('\n')
+                else:
+                    self.logger.error("LLM response content is None")
+                    results = []
                 
                 # Apply the results back to the batch
                 for j, result in enumerate(results):
@@ -942,183 +900,7 @@ class DocumentProcessor:
 # =============================================
 
 if __name__ == "__main__":
-    # Set up debug logging for testing
-    log_file = f"document_processor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-    setup_logging(debug_mode=True, log_file=log_file)
-    logging.info("Starting document processor test run")
-    
-    # Example test pages
-    test_urls = [
-        "https://en.wikipedia.org/wiki/Vocaloid",
-        "https://vocaloid.fandom.com/wiki/Kasane_Teto",
-        "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge",
-        "https://blazblue.fandom.com/wiki/Centralfiction",
-        "https://blazblue.fandom.com/wiki/Rachel_Alucard",
-        "https://vocaloid.fandom.com/wiki/Hatsune_Miku"
-    ]
-    
-    # Initialize the semantic memory
-    logging.info("Initializing semantic memory")
-    kgraph = VectorKnowledgeGraph(path="Test_DocumentProcessing")
-    memory = AssociativeSemanticMemory(kgraph)
-    processor = DocumentProcessor(memory)
-    
-    try:
-        # Process each page
-        total_start = time.time()
-        total_processed = 0
-        total_failed = 0
-        chunk_logs = []
-        
-        for i, url in enumerate(test_urls, 1):
-            logging.info(f"\nProcessing URL {i}/{len(test_urls)}: {url}")
-            url_start = time.time()
-            
-            try:
-                source = WebPageSource(url)
-                result = processor.process_document(source)
-                
-                if result['success']:
-                    total_processed += result['processed_chunks']
-                    if result.get('failed_chunks', 0) > 0:
-                        total_failed += result['failed_chunks']
-                    
-                    logging.info(f"Successfully processed {result['processed_chunks']} chunks")
-                    logging.info(f"Found {len(result['images'])} images")
-                    logging.info(f"Processing time: {result.get('processing_time', 0):.2f}s")
-                    
-                    # Track chunk log files
-                    if 'chunk_log' in result:
-                        chunk_logs.append(result['chunk_log'])
-                        logging.info(f"Chunk details saved to: {result['chunk_log']}")
-                    
-                    # Test querying the processed content
-                    logging.info("\nTesting queries...")
-                    queries = [
-                        "Who is Ragna the Bloodedge?",
-                        "What is BlazBlue: Centralfiction?",
-                        "Tell me about Rachel Alucard",
-                        "What is Vocaloid?",
-                        "Who is Kasane Teto?",
-                        "Tell me about Hatsune Miku"
-                    ]
-                    
-                    for query in queries:
-                        try:
-                            query_start = time.time()
-                            logging.info(f"\nQuery: {query}")
-                            related = memory.query_related_information(query)
-                            logging.info(f"Found {len(related)} related triples in {time.time() - query_start:.2f}s")
-                            
-                            # Print a summary of the results
-                            if related:
-                                summary_start = time.time()
-                                logging.info("\nSummary:")
-                                try:
-                                    summary = memory.summarize_results(related)
-                                    logging.info(summary)
-                                    logging.info(f"Summary generation time: {time.time() - summary_start:.2f}s")
-                                except Exception as e:
-                                    logging.error(f"Error generating summary: {str(e)}")
-                                    logging.info("Attempting to summarize with fewer triples...")
-                                    
-                                    # Try with just the first 5 triples if there are too many
-                                    if len(related) > 8:
-                                        try:
-                                            limited_summary = memory.summarize_results(related[:8])
-                                            logging.info("Limited summary (first 8 triples only):")
-                                            logging.info(limited_summary)
-                                            logging.info(f"Limited summary generation time: {time.time() - summary_start:.2f}s")
-                                        except Exception as e2:
-                                            logging.error(f"Error generating limited summary: {str(e2)}")
-                                
-                                # Log the retrieved triples
-                                logging.info("\nRetrieved Triples:")
-                                for i, triple in enumerate(related[:10]):  # Show first 10 triples
-                                    try:
-                                        # Try to access as a dictionary
-                                        if isinstance(triple, dict):
-                                            logging.info(f"{i+1}. Subject: {triple.get('subject', 'N/A')}")
-                                            logging.info(f"   Predicate: {triple.get('predicate', 'N/A')}")
-                                            logging.info(f"   Object: {triple.get('object', 'N/A')}")
-                                            logging.info(f"   Confidence: {triple.get('confidence', 'N/A')}")
-                                            logging.info(f"   Source: {triple.get('source', 'N/A')}")
-                                        # Try to access as a tuple
-                                        elif isinstance(triple, tuple):
-                                            logging.info(f"{i+1}. Subject: {triple[0] if len(triple) > 0 else 'N/A'}")
-                                            logging.info(f"   Predicate: {triple[1] if len(triple) > 1 else 'N/A'}")
-                                            logging.info(f"   Object: {triple[2] if len(triple) > 2 else 'N/A'}")
-                                            logging.info(f"   Confidence: N/A")
-                                            logging.info(f"   Source: N/A")
-                                        else:
-                                            logging.info(f"{i+1}. Triple format unknown: {type(triple)}")
-                                            logging.info(f"   Contents: {triple}")
-                                    except Exception as e:
-                                        logging.error(f"Error displaying triple {i+1}: {str(e)}")
-                                
-                                if len(related) > 10:
-                                    logging.info(f"... and {len(related) - 10} more triples")
-                            else:
-                                logging.warning(f"No relevant information found for query: '{query}'")
-                        except Exception as e:
-                            logging.error(f"Error processing query '{query}': {str(e)}")
-                            logging.debug("Query error details:", exc_info=True)
-                            continue
-                else:
-                    total_failed += 1
-                    logging.error(f"Failed to process document: {result.get('error', 'Unknown error')}")
-                    if 'metadata' in result and 'error' in result['metadata']:
-                        logging.error(f"Error details: {result['metadata']['error']}")
-            
-            except Exception as e:
-                total_failed += 1
-                logging.error(f"Error processing URL {url}: {str(e)}")
-                logging.debug("Error details:", exc_info=True)
-                continue
-            
-            url_time = time.time() - url_start
-            logging.info(f"\nCompleted processing URL {i}/{len(test_urls)} in {url_time:.2f}s")
-            
-            # Calculate averages and remaining time safely
-            elapsed = time.time() - total_start
-            if i > 0:  # Prevent division by zero
-                progress = i / len(test_urls) * 100
-                avg_time = elapsed / i
-                remaining = (len(test_urls) - i) * avg_time
-            else:
-                progress = 0
-                avg_time = 0
-                remaining = 0
-            logging.info(f"Overall progress: {progress:.1f}%")
-            logging.info(f"Average time per URL: {avg_time:.2f}s")
-            logging.info(f"Estimated time remaining: {remaining:.2f}s")
-    
-    finally:
-        # Clean up
-        total_time = time.time() - total_start
-        logging.info("\nTest run summary:")
-        logging.info(f"Total URLs processed: {len(test_urls)}")
-        logging.info(f"Total chunks processed: {total_processed}")
-        logging.info(f"Total failures: {total_failed}")
-        logging.info(f"Total processing time: {total_time:.2f}s")
-        logging.info(f"Average time per URL: {total_time/len(test_urls):.2f}s")
-        
-        # List all generated chunk logs
-        if chunk_logs:
-            logging.info("\nGenerated chunk logs:")
-            for log_file in chunk_logs:
-                logging.info(f"- {log_file}")
-        
-        # Export all triples to JSON
-        export_file = f"triples_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        export_result = processor.export_all_triples_to_json(export_file)
-        if export_result['success']:
-            logging.info(f"Successfully exported {export_result['triple_count']} triples to {export_file}")
-        else:
-            logging.error(f"Failed to export triples: {export_result.get('error', 'Unknown error')}")
-        
-        logging.info("Cleaning up resources")
-        memory.close()
-        if os.path.exists("Test_DocumentProcessing"):
-            shutil.rmtree("Test_DocumentProcessing")
-        logging.info("Test run completed") 
+    # Test code has been moved to test_document_processor.py
+    # Run: python test_document_processor.py
+    print("Test code has been moved to test_document_processor.py")
+    print("To run tests: python test_document_processor.py")
