@@ -54,7 +54,7 @@ CORE RULES:
    - For EACH fact, identify a list of concise topics (e.g., ["Likes/Dislikes", "Personal Interests"], ["Work Details", "Career Information"], ["Hobbies", "Leisure Activities"], ["Personal Details", "Biography"]). These topics should consider the overall context of the conversation.
    - Use complete, meaningful verbs that capture the full relationship.
    - Objects should be specific entities, not partial actions.
-   - Keep specific details like names, places, dates, foods, etc.
+   - Keep specific details like names, places (be as complete as possible when specifying a place), dates, foods, etc.
    - Ignore conversational filler or emotional responses.
 
 3. **Complete Relationships & Topics**:

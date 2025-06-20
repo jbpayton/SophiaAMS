@@ -160,167 +160,41 @@ class AssociativeSemanticMemory:
         # Removed separate 'topics' key from result
         return result
 
-    def query_related_information(self, text: str, include_summary_triples: bool = True, 
-                                 follow_references: bool = True) -> List: # Removed include_topics
+    def query_related_information(self, text: str, include_summary_triples: bool = True) -> List:
         """
-        Query the knowledge graph for information related to the input text.
-        Topics are now integral to triples and queries.
-        
+        Query the knowledge graph for information related to the input text using a
+        holistic, semantic search over triple content.
+
         Args:
             text: Text to find related information for
             include_summary_triples: Whether to include triples from summaries
-            follow_references: Whether to follow entity reference links
-            
+
         Returns:
-            list: Related triples and their metadata, ordered by a relevance score
+            list: Related (triple, metadata) tuples, ordered by confidence score
         """
-        logging.info(f"Querying related information for: {text}")
-        logging.debug(f"Include summary triples: {include_summary_triples}")
-        logging.debug(f"Follow references: {follow_references}")
-        
-        # Extract triples from query text
-        logging.debug("Extracting triples from query text")
-        # Call extract_triples_from_string without include_topics
-        query_extraction_result = extract_triples_from_string(text, is_query=True)
-        query_triples = query_extraction_result.get("query_triples", []) # get query_triples key
-        
-        # Derive query_topics from the 'topics' field within each query_triple
-        query_topics_set = set()
-        for qt in query_triples:
-            if isinstance(qt, dict):
-                topics_list = qt.get("topics")
-                if isinstance(topics_list, list):
-                    for topic_item in topics_list:
-                        if isinstance(topic_item, str):
-                            query_topics_set.add(topic_item)
-                        # else: consider logging a warning for non-string topic items
-                # else: consider logging a warning if 'topics' is not a list or is missing
-            # else: consider logging a warning if a query triple item is not a dictionary
-        query_topics = list(query_topics_set)
-        
-        logging.info(f"Extracted {len(query_triples)} query triples")
-        logging.info(f"Derived {len(query_topics)} unique query topics from query triples")
-        
-        # Collect related information
-        related_triples = [] # This will store (triple, metadata) tuples
-        # topic_related_triples = [] # This will store (triple, metadata) tuples for topic-based matches
+        logging.info(f"Querying related information for: '{text}'")
 
-        # Search for connections through both subject and object endpoints of the query triples.
-        for triple_data in query_triples:
-            try:
-                # Get query components
-                subject = triple_data["subject"]
-                obj = triple_data["object"]
-                
-                # Get references if requested
-                subject_references = []
-                object_references = []
-                
-                if follow_references:
-                    # Find references for subjects
-                    subject_references = self._get_entity_references(subject)
-                    logging.debug(f"Found references for subject '{subject}': {subject_references}")
-                    
-                    # Find references for objects
-                    object_references = self._get_entity_references(obj)
-                    logging.debug(f"Found references for object '{obj}': {object_references}")
-                
-                # Combine original and references
-                all_subjects = [subject] # + subject_references (if any)
-                all_objects = [obj]     # + object_references (if any)
-                if follow_references:
-                    all_subjects.extend(subject_references)
-                    all_objects.extend(object_references)
-                
-                current_results = []
-                for s_item in all_subjects:
-                    current_results.extend(self.kgraph.build_graph_from_noun(s_item, similarity_threshold=0.7, return_metadata=True))
-                for o_item in all_objects:
-                    current_results.extend(self.kgraph.build_graph_from_noun(o_item, similarity_threshold=0.7, return_metadata=True))
+        # Use the new holistic text similarity search
+        try:
+            all_results = self.kgraph.find_triples_by_text_similarity(
+                query_text=text,
+                return_metadata=True,
+                similarity_threshold=0.2,
+                limit=25
+            )
+        except Exception as e:
+            logging.error(f"Error during text similarity search: {e}")
+            all_results = []
+        
+        # Filter out summary triples if not requested
+        if not include_summary_triples:
+            final_results = [(t, m) for t, m in all_results if not m.get("is_from_summary", False)]
+        else:
+            final_results = all_results
 
-                if not include_summary_triples:
-                    current_results = [(t, m) for t, m in current_results if not m.get("is_from_summary", False)]
-                
-                # Add query context
-                for t, m in current_results:
-                    m["query_context"] = {
-                        "original_query": text,
-                        "query_subject": subject,
-                        "query_object": obj,
-                        "query_triple_topics": triple_data.get("topics", []), # Add topics of the query triple
-                        "connected_through": "subject" if any(s.lower() in str(t).lower() for s in all_subjects) else "object"
-                    }
-                related_triples.extend(current_results)
-            except Exception as e:
-                logging.error(f"Error processing query triple for direct search: {e}")
-                continue
-        
-        # New: Perform vector-based search for query_topics
-        topic_vector_search_results = []
-        if query_topics:
-            logging.debug(f"Performing vector-based topic search for topics: {query_topics}")
-            try:
-                # This is a placeholder for the new method in VectorKnowledgeGraph
-                # It will take the list of query topics, embed them (or a concatenation), 
-                # and search against stored topic vectors.
-                topic_vector_search_results = self.kgraph.find_triples_by_vectorized_topics(
-                    query_topics=query_topics,
-                    return_metadata=True,
-                    # We might need a similarity threshold here, e.g., similarity_threshold=0.7
-                )
-                logging.info(f"Found {len(topic_vector_search_results)} triples via vector-based topic search.")
-
-                if not include_summary_triples:
-                    topic_vector_search_results = [(t, m) for t, m in topic_vector_search_results
-                                               if not m.get("is_from_summary", False)]
-                
-                # Add context that these were found via a vectorized topic search from the query
-                for triple, metadata in topic_vector_search_results:
-                    metadata["topic_query_context"] = {
-                        "searched_query_topics": query_topics, # The topics used for the vector search
-                        "search_type": "vectorized_topic_match" 
-                    }
-            except AttributeError as e:
-                logging.error(f"VectorKnowledgeGraph does not yet have method 'find_triples_by_vectorized_topics': {e}")
-            except Exception as e:
-                logging.error(f"Error during vectorized topic search: {e}")
-        
-        all_results = related_triples + topic_vector_search_results
-        
-        seen = set() # Corrected indentation
-        unique_related_triples = []
-        for t, m in all_results:
-            # Ensure t is converted to a hashable type, e.g., a tuple of strings
-            try:
-                hashable_t = tuple(map(str, t))
-            except TypeError: # If t is not iterable or elements not convertible
-                hashable_t = str(t)
-
-            if hashable_t not in seen:
-                seen.add(hashable_t)
-                unique_related_triples.append((t, m))
-        
-        # Sort results by relevance
-        def get_relevance_score(item):
-            _, metadata = item
-            score = 0.5  # Base score
-            
-            if "topic_query_context" in metadata: # Matched via a query topic
-                score += 0.3 # Boost for topic match
-            if "query_context" in metadata: # Matched via direct query triple S/O
-                score += 0.2
-
-            timestamp_val = metadata.get("timestamp", 0)
-            if timestamp_val:
-                age_days = (time.time() - timestamp_val) / (24 * 3600)
-                score += max(0, 0.2 - (age_days * 0.01))
-            
-            return score
-        
-        unique_related_triples.sort(key=get_relevance_score, reverse=True)
-        
-        logging.info(f"Found {len(unique_related_triples)} unique related triples after merging and sorting.")
-        return unique_related_triples
+        # The results from find_triples_by_text_similarity are already sorted by confidence
+        logging.info(f"Found {len(final_results)} related triples.")
+        return final_results
         
     def _get_entity_references(self, entity: str) -> List[str]:
         """
@@ -364,17 +238,18 @@ class AssociativeSemanticMemory:
         
         return list(set(references))  # Remove duplicates
 
-    def summarize_results(self, results: List[Tuple]) -> str:
+    def summarize_results(self, input_text: str, results: List[Tuple]) -> str:
         """
-        Summarize the retrieved information into a coherent paragraph.
+        Summarize the retrieved information into a coherent paragraph, guided by the original input text.
         
         Args:
+            input_text: The original text that prompted the search. Can be a question or a statement.
             results: List of (triple, metadata) tuples from query_related_information
             
         Returns:
             str: A natural language summary of the retrieved information
         """
-        logging.info("Summarizing results")
+        logging.info(f"Summarizing results for input: '{input_text}'")
         if not results:
             logging.warning("No results to summarize")
             return "No relevant information found."
@@ -384,29 +259,27 @@ class AssociativeSemanticMemory:
         unique_info = set()
         for triple, metadata in results:
             # Get the triple components
-            subject = triple[0]
-            relationship = triple[1]
-            obj = triple[2]
+            subject, relationship, obj = triple
             
-            # Build a detailed description
-            desc = f"{subject}"
-            
-            desc += f" {relationship}"
-            
-            desc += f" {obj}"
+            # Build a detailed description with confidence
+            confidence = metadata.get('confidence', 0.0)
+            desc = f"Fact: {subject} {relationship} {obj} (Confidence: {confidence:.2f})"
             
             unique_info.add(desc)
         
         logging.debug(f"Extracted {len(unique_info)} unique pieces of information")
         
         # Create a prompt for the LLM to format this into a paragraph
-        prompt = f"""Please combine the following pieces of information into a coherent paragraph.
-The information should flow naturally and maintain all the important details.
+        prompt = f"""Synthesize a concise, relevant paragraph in response to the following input text, using only the provided facts.
+The facts are sorted by relevance. Prioritize the most relevant ones to form a coherent response that directly addresses the input text.
 
-Information to combine:
+**Input Text:**
+{input_text}
+
+**Facts:**
 {chr(10).join(unique_info)}
 
-Please write a paragraph that incorporates all this information in a natural way:"""
+**Response:**"""
         
         # Call the LLM to format the information
         logging.debug("Calling LLM to generate summary")
@@ -506,7 +379,7 @@ if __name__ == "__main__":
         
         # Print summary of results
         logging.info("Summary of retrieved information:")
-        logging.info(memory.summarize_results(related))
+        logging.info(memory.summarize_results("I like Hatsune Miku", related))
         
         # Test 2: Question format
         logging.info("Query 2: 'Tell me about Miku's voice'")
@@ -522,7 +395,7 @@ if __name__ == "__main__":
         
         # Print summary of results
         logging.info("Summary of retrieved information:")
-        logging.info(memory.summarize_results(related))
+        logging.info(memory.summarize_results("Tell me about Miku's voice", related))
         
         # Test 3: Excluding summary triples
         logging.info("Query 3: 'Who developed Miku?' (excluding summary triples)")
@@ -537,7 +410,7 @@ if __name__ == "__main__":
         
         # Print summary of results
         logging.info("Summary of retrieved information:")
-        logging.info(memory.summarize_results(related_no_summary))
+        logging.info(memory.summarize_results("Who developed Miku?", related_no_summary))
     
     finally:
         # Close the memory system and knowledge graph connection

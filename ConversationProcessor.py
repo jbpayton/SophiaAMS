@@ -216,7 +216,7 @@ class ConversationProcessor:
             summary = None
             if related:
                 try:
-                    summary = self.memory.summarize_results(related)
+                    summary = self.memory.summarize_results(query, related)
                     self.logger.info(f"Generated summary of results")
                 except Exception as e:
                     self.logger.error(f"Error generating summary: {str(e)}")

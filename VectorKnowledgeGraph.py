@@ -79,7 +79,8 @@ class VectorKnowledgeGraph:
                     "subject": VectorParams(size=self.embedding_dim, distance=Distance.COSINE),
                     "relationship": VectorParams(size=self.embedding_dim, distance=Distance.COSINE),
                     "object": VectorParams(size=self.embedding_dim, distance=Distance.COSINE),
-                    "topic_vector": VectorParams(size=self.embedding_dim, distance=Distance.COSINE)  # Added topic_vector
+                    "topic_vector": VectorParams(size=self.embedding_dim, distance=Distance.COSINE),
+                    "triple_content": VectorParams(size=self.embedding_dim, distance=Distance.COSINE)
                 }
             )
             logging.info("Collection created successfully")
@@ -115,6 +116,10 @@ class VectorKnowledgeGraph:
         relationship_embeddings = self.embedding_model.encode(list(relationships))
         object_embeddings = self.embedding_model.encode(list(objects))
         
+        # Generate embeddings for the entire triple content
+        triple_content_strings = [f"Subject: {s}, Relationship: {r}, Object: {o}" for s, r, o in triples]
+        triple_content_embeddings = self.embedding_model.encode(triple_content_strings)
+
         # Generate embeddings for topics
         topic_embeddings = []
         for meta in metadata:
@@ -131,7 +136,7 @@ class VectorKnowledgeGraph:
         # Prepare points for Qdrant insertion
         logging.debug("Preparing points for Qdrant insertion")
         points = []
-        for i, (triple, s_emb, r_emb, o_emb, t_emb, meta) in enumerate(zip(triples, subject_embeddings, relationship_embeddings, object_embeddings, topic_embeddings, metadata)):
+        for i, (triple, s_emb, r_emb, o_emb, t_emb, c_emb, meta) in enumerate(zip(triples, subject_embeddings, relationship_embeddings, object_embeddings, topic_embeddings, triple_content_embeddings, metadata)):
             subject, relationship, obj = triple
             # Ensure unique ID, for example, by using a combination of current time and index, or UUIDs
             # For simplicity, using index i, but this assumes add_triples is called sequentially or IDs are managed externally
@@ -168,7 +173,8 @@ class VectorKnowledgeGraph:
                     "subject": s_emb.tolist(),
                     "relationship": r_emb.tolist(),
                     "object": o_emb.tolist(),
-                    "topic_vector": t_emb.tolist() # Added topic_vector
+                    "topic_vector": t_emb.tolist(),
+                    "triple_content": c_emb.tolist()
                 },
                 payload={
                     "subject": subject,
@@ -247,6 +253,16 @@ class VectorKnowledgeGraph:
 
         logging.info(f"Found {len(collected_triples)} matching triples")
         if return_metadata:
+            # Add confidence score to metadata
+            for i in range(len(collected_triples)):
+                # This confidence is based on the subject match score.
+                # A more nuanced approach could average subject and verb scores
+                # or use the minimum of the two. Let's use subject score for now.
+                subject_hit = next((hit for hit in subject_results if hit.id == common_triple_ids[i]), None)
+                if subject_hit:
+                    collected_metadata[i]['confidence'] = subject_hit.score
+                else:
+                    collected_metadata[i]['confidence'] = similarity_threshold # Default
             return list(zip(collected_triples, collected_metadata))
         else:
             return collected_triples
@@ -421,6 +437,46 @@ class VectorKnowledgeGraph:
         logging.info(f"Found {len(found_triples)} triples matching vectorized topics with score >= {similarity_threshold}")
         return found_triples
 
+    def find_triples_by_text_similarity(self, query_text: str, return_metadata: bool = True, limit: int = 25, similarity_threshold: float = 0.7) -> List:
+        """
+        Finds triples by performing a semantic search on the entire content of the triple.
+
+        Args:
+            query_text: The text to search for.
+            return_metadata: Whether to return metadata.
+            limit: The maximum number of results.
+            similarity_threshold: The minimum similarity score.
+
+        Returns:
+            A list of matching triples.
+        """
+        logging.info(f"Finding triples by text similarity for: '{query_text}'")
+        
+        query_embedding = self.embedding_model.encode([query_text])[0]
+
+        search_results = self.qdrant_client.search(
+            collection_name=self.collection_name,
+            query_vector=("triple_content", query_embedding.tolist()),
+            limit=limit,
+            score_threshold=similarity_threshold,
+            with_payload=True
+        )
+
+        found_triples = []
+        for hit in search_results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    metadata['confidence'] = hit.score
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+        
+        logging.info(f"Found {len(found_triples)} triples from text similarity search.")
+        return found_triples
+
     def find_triples_by_topic_tags(self, topics_to_match: List[str], return_metadata: bool = True, limit: int = 1000) -> List:
         """
         Find triples where the 'topics' list in their metadata contains any of the specified topic strings.
@@ -496,7 +552,7 @@ class VectorKnowledgeGraph:
         return True
 
     def build_graph_from_noun(self, query, similarity_threshold=0.8, depth=0, metadata_query=None,
-                              return_metadata=False):
+                              return_metadata=False, confidence_decay=0.8):
         logging.debug(f"Building graph from noun: {query} with depth: {depth}")
         # Check if collection is empty
         collection_info = self.qdrant_client.get_collection(self.collection_name)
@@ -509,12 +565,12 @@ class VectorKnowledgeGraph:
         collected_metadata = []
         visited = set()
 
-        def recursive_search(current_point, current_depth):
+        def recursive_search(current_point, current_depth, current_confidence):
             if current_depth > depth:
                 return
 
             visited.add(current_point)
-            logging.debug(f"Processing node: {current_point} at depth {current_depth}")
+            logging.debug(f"Processing node: {current_point} at depth {current_depth} with confidence {current_confidence:.2f}")
             current_point_embedding = self.embedding_model.encode([current_point])[0]
 
             # Only search for matches where the current point is the subject
@@ -534,23 +590,30 @@ class VectorKnowledgeGraph:
                     similarity = hit.score
 
                     if similarity >= similarity_threshold:
+                        # The confidence of this triple is the initial match similarity
+                        # times the decay factor for its depth
+                        new_confidence = current_confidence * similarity
+                        
                         collected_triples.append(triple)
                         if return_metadata:
-                            collected_metadata.append(payload.get("metadata"))
+                            metadata = payload.get("metadata", {})
+                            metadata['confidence'] = new_confidence
+                            collected_metadata.append(metadata)
 
-                    # Recurse on the object if it hasn't been visited
-                    object_val = payload.get("object")
-                    if object_val and object_val not in visited:
-                        recursive_search(object_val, current_depth + 1)
+                        # Recurse on the object if it hasn't been visited
+                        object_val = payload.get("object")
+                        if object_val and object_val not in visited:
+                            # The confidence for the next level is decayed
+                            recursive_search(object_val, current_depth + 1, new_confidence * confidence_decay)
 
-        # Kick off the recursive search from the query point
-        recursive_search(query, 0)
+        # Kick off the recursive search from the query point with initial confidence of 1.0
+        recursive_search(query, 0, 1.0)
         logging.info(f"Found {len(collected_triples)} triples in graph traversal")
 
         if return_metadata:
             return list(zip(collected_triples, collected_metadata))
         else:
-            return list(set(collected_triples))
+            return collected_triples
 
     def visualize_graph_from_nouns(self, queries, similarity_threshold=0.8, depth=0, metadata_query=None):
         logging.info(f"Visualizing graph for queries: {queries}")

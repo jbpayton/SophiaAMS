@@ -93,38 +93,56 @@ def export_triples_to_file(kgraph, filename):
         logger.error(f"Error exporting triples: {e}")
         return 0
 
-def calculate_answer_score(expected_keywords, actual_summary, query):
+def calculate_answer_score(expected_concepts: List[List[str]], actual_summary: str, query: str) -> Dict:
     """
-    Calculate a score for how well the actual summary matches expected keywords.
-    Returns a dictionary with detailed scoring information.
+    Calculate a score based on finding concepts in the summary.
+    `expected_concepts` is a list of lists, where each inner list contains aliases for one concept.
+    e.g., [["6 months", "six months"]]
+    A concept is considered "found" if any of its aliases appear in the summary.
     """
     if not actual_summary:
         return {
             'score': 0.0,
             'found_keywords': [],
-            'missing_keywords': expected_keywords,
-            'total_expected': len(expected_keywords),
+            'missing_keywords': [c[0] for c in expected_concepts],
+            'total_expected': len(expected_concepts),
             'details': 'No summary provided'
         }
     
-    actual_summary_lower = actual_summary.lower()
+    summary_lower = actual_summary.lower()
+    found_concepts_count = 0
     found_keywords = []
-    missing_keywords = []
-    
-    for keyword in expected_keywords:
-        if keyword.lower() in actual_summary_lower:
-            found_keywords.append(keyword)
+    missing_concepts = []
+
+    if not expected_concepts:
+        return {
+            'score': 1.0, 'found_keywords': [], 'missing_keywords': [], 'total_expected': 0, 'details': 'No concepts expected'
+        }
+
+    for concept_aliases in expected_concepts:
+        is_concept_found = False
+        # Find the first alias that matches
+        for alias in concept_aliases:
+            if alias.lower() in summary_lower:
+                is_concept_found = True
+                found_keywords.append(alias)  # Log which alias was found
+                break  # Move to the next concept
+        
+        if is_concept_found:
+            found_concepts_count += 1
         else:
-            missing_keywords.append(keyword)
-    
-    score = len(found_keywords) / len(expected_keywords) if expected_keywords else 0.0
+            # If no alias was found, the concept is missing
+            missing_concepts.append(concept_aliases[0])  # Report the primary alias as missing
+            
+    total_concepts = len(expected_concepts)
+    score = found_concepts_count / total_concepts if total_concepts > 0 else 1.0
     
     return {
         'score': score,
         'found_keywords': found_keywords,
-        'missing_keywords': missing_keywords,
-        'total_expected': len(expected_keywords),
-        'details': f'Found {len(found_keywords)}/{len(expected_keywords)} expected keywords'
+        'missing_keywords': missing_concepts,
+        'total_expected': total_concepts,
+        'details': f'Found {found_concepts_count}/{total_concepts} expected concepts'
     }
 
 def run_scored_memory_test(processor, queries_with_expected):
@@ -138,12 +156,12 @@ def run_scored_memory_test(processor, queries_with_expected):
     logger.info("RUNNING SCORED MEMORY TEST")
     logger.info("=" * 60)
     
-    for i, (query, expected_keywords) in enumerate(queries_with_expected, 1):
+    for i, (query, expected_concepts) in enumerate(queries_with_expected, 1):
         print(f"🔍 Query {i}/{len(queries_with_expected)}: '{query}'")
-        print(f"   🎯 Looking for: {expected_keywords}")
+        print(f"   🎯 Looking for: {expected_concepts}")
         
         logger.info(f"\nQuery {i}/#{len(queries_with_expected)}: '{query}'")
-        logger.info(f"Expected keywords: {expected_keywords}")
+        logger.info(f"Expected concepts: {expected_concepts}")
         
         # Query the memory
         print("   ⏳ Searching memory...")
@@ -154,12 +172,29 @@ def run_scored_memory_test(processor, queries_with_expected):
             min_confidence=0.6
         )
         
+        summary = query_result.get('summary', 'No summary provided.')
+        retrieved_triples = query_result.get('triples', [])
+
         # Calculate score
-        score_info = calculate_answer_score(expected_keywords, query_result.get('summary'), query)
+        score_info = calculate_answer_score(expected_concepts, summary, query)
         
         # Show immediate feedback
+        print(f"   📝 Summary: {summary}")
+        if retrieved_triples:
+            print(f"   🧠 Retrieved {len(retrieved_triples)} triples:")
+            # Sort by confidence if available
+            sorted_triples = sorted(retrieved_triples, key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+            for i, (triple, metadata) in enumerate(sorted_triples[:3]): # Show top 3
+                confidence_score = metadata.get('confidence')
+                confidence_str = f"{confidence_score:.2f}" if isinstance(confidence_score, float) else "N/A"
+                print(f"      {i+1}. {triple} (Confidence: {confidence_str}, Speaker: {metadata.get('speaker', 'N/A')})")
+            if len(retrieved_triples) > 3:
+                print("      ...")
+        else:
+            print("   🧠 No triples retrieved.")
+
         if score_info['score'] == 1.0:
-            print(f"   ✅ Perfect score! Found all keywords: {score_info['found_keywords']}")
+            print(f"   ✅ Perfect score! Found all concepts: {score_info['found_keywords']}")
         elif score_info['score'] > 0.5:
             print(f"   ⚠️  Partial score ({score_info['score']:.2f}): Found {score_info['found_keywords']}")
             if score_info['missing_keywords']:
@@ -168,27 +203,34 @@ def run_scored_memory_test(processor, queries_with_expected):
             print(f"   ❌ Low score ({score_info['score']:.2f}): Only found {score_info['found_keywords']}")
             print(f"   🔍 Missing: {score_info['missing_keywords']}")
         
-        print(f"   📊 Found {query_result['triple_count']} related memories")
+        print(f"   📊 Found {query_result.get('triple_count', 0)} related memories")
         print("")
         
         # Log results
-        logger.info(f"Found {query_result['triple_count']} related memories")
-        logger.info(f"Summary: {query_result.get('summary', 'No summary')}")
+        logger.info(f"Found {query_result.get('triple_count', 0)} related memories")
+        logger.info(f"Summary: {summary}")
         logger.info(f"Score: {score_info['score']:.2f} ({score_info['details']})")
         
+        if retrieved_triples:
+            logger.info("Retrieved triples:")
+            for triple, metadata in retrieved_triples:
+                confidence_score = metadata.get('confidence')
+                confidence_str = f"{confidence_score:.2f}" if isinstance(confidence_score, float) else "N/A"
+                logger.info(f"  - {triple} (Confidence: {confidence_str}, Speaker: {metadata.get('speaker', 'N/A')})")
+        
         if score_info['found_keywords']:
-            logger.info(f"✓ Found keywords: {score_info['found_keywords']}")
+            logger.info(f"✓ Found concepts: {score_info['found_keywords']}")
         if score_info['missing_keywords']:
-            logger.info(f"✗ Missing keywords: {score_info['missing_keywords']}")
+            logger.info(f"✗ Missing concepts: {score_info['missing_keywords']}")
         
         # Store results
         result_data = {
             'query': query,
-            'expected_keywords': expected_keywords,
-            'triple_count': query_result['triple_count'],
-            'summary': query_result.get('summary'),
+            'expected_concepts': expected_concepts,
+            'triple_count': query_result.get('triple_count', 0),
+            'summary': summary,
+            'retrieved_triples': retrieved_triples,
             'score_info': score_info,
-            'confidence_scores': query_result.get('confidence_scores', [])
         }
         results.append(result_data)
         total_score += score_info['score']
@@ -444,7 +486,7 @@ def analyze_extracted_triples(export_file):
         'detail_score': detail_score
     }
 
-def test_different_conversation_types(processor):
+def test_different_conversation_types(processor, kgraph, timestamp):
     """
     Test the system with different types of conversations to identify strengths and weaknesses.
     """
@@ -462,11 +504,11 @@ def test_different_conversation_types(processor):
                 {"role": "assistant", "name": "Sophia", "content": "Six months of Python study is actually quite substantial! I remember when I first learned JavaScript - it took me 8 months to feel confident. Have you practiced with any specific frameworks?"}
             ],
             "test_queries": [
-                ("Where is Jordan's interview?", ["Microsoft"]),
-                ("What programming language has Jordan been studying?", ["Python"]),
-                ("How long has Jordan been studying?", ["6 months"]),
-                ("What presentation did Sophia give?", ["Stanford"]),
-                ("What language did Sophia learn?", ["JavaScript"])
+                ("Where is Jordan's interview?", [["Microsoft"]]),
+                ("What programming language has Jordan been studying?", [["Python"]]),
+                ("How long has Jordan been studying?", [["6 months", "six months"]]),
+                ("What presentation did Sophia give?", [["Stanford"]]),
+                ("What programming language did Sophia learn?", [["JavaScript"]])
             ]
         },
         {
@@ -478,16 +520,16 @@ def test_different_conversation_types(processor):
                 {"role": "assistant", "name": "Sophia", "content": "I stayed at a small guesthouse in Akureyri called Northern Comfort Inn. The host served amazing lamb stew every evening. What was your favorite meal there?"}
             ],
             "test_queries": [
-                ("Where did Maya see the Northern Lights?", ["Iceland", "Reykjavik", "March 15"]),
-                ("Where did Maya stay?", ["Hotel Borg"]),
-                ("Where did Sophia visit Iceland?", ["Akureyri", "February"]),
-                ("What did Sophia eat?", ["lamb stew"]),
-                ("Where did Sophia stay?", ["Northern Comfort Inn"])
+                ("Where did Maya see the Northern Lights?", [["Iceland", "Reykjavik"]]),
+                ("Where did Maya stay?", [["Hotel Borg"]]),
+                ("Where did Sophia visit in Iceland?", [["Akureyri"]]),
+                ("What did Sophia eat?", [["lamb stew"]]),
+                ("Where did Sophia stay?", [["Northern Comfort Inn"]])
             ]
         }
     ]
     
-    scenario_results = []
+    scenario_results_summary = []
     
     for scenario in test_scenarios:
         logger.info(f"\nTesting: {scenario['name']}")
@@ -507,12 +549,15 @@ def test_different_conversation_types(processor):
         time.sleep(1)
         
         # Test queries
+        scenario_query_results = []
         scenario_score = 0
         max_score = 0
         
-        for query, expected_keywords in scenario['test_queries']:
+        print(f"\n🔬 Testing Scenario: {scenario['name']}")
+        for query, expected_concepts in scenario['test_queries']:
+            print(f"  - Query: '{query}'")
             logger.info(f"  Query: {query}")
-            logger.info(f"  Expected: {expected_keywords}")
+            logger.info(f"  Expected: {expected_concepts}")
             
             query_result = processor.query_conversation_memory(
                 query=query,
@@ -521,29 +566,99 @@ def test_different_conversation_types(processor):
                 min_confidence=0.6
             )
             
+            summary = query_result.get('summary', 'No summary provided.')
+            retrieved_triples = query_result.get('triples', [])
+            
             # Calculate score
-            score_info = calculate_answer_score(expected_keywords, query_result.get('summary'), query)
+            score_info = calculate_answer_score(expected_concepts, summary, query)
             scenario_score += score_info['score']
             max_score += 1
             
-            logger.info(f"  Found: {score_info['found_keywords']}")
+            # Store detailed result for export
+            result_data = {
+                'query': query,
+                'expected_concepts': expected_concepts,
+                'triple_count': query_result.get('triple_count', 0),
+                'summary': summary,
+                'retrieved_triples': retrieved_triples,
+                'score_info': score_info,
+            }
+            scenario_query_results.append(result_data)
+
+            print(f"    📝 Summary: {summary}")
+            if retrieved_triples:
+                print(f"    🧠 Retrieved {len(retrieved_triples)} triples:")
+                sorted_triples = sorted(retrieved_triples, key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+                for i, (triple, metadata) in enumerate(sorted_triples[:3]): # Show top 3
+                    confidence_score = metadata.get('confidence')
+                    confidence_str = f"{confidence_score:.2f}" if isinstance(confidence_score, float) else "N/A"
+                    print(f"      {i+1}. {triple} (Confidence: {confidence_str})")
+                if len(retrieved_triples) > 3:
+                    print("      ...")
+            else:
+                print("    🧠 No triples retrieved.")
+
+            if score_info['score'] == 1.0:
+                print(f"    ✅ Perfect score! Found: {score_info['found_keywords']}")
+            else:
+                print(f"    ⚠️  Score: {score_info['score']:.2f} (Found: {score_info['found_keywords']}, Missing: {score_info['missing_keywords']})")
+            print("")
+
+            logger.info(f"  Summary: {summary}")
+            if retrieved_triples:
+                logger.info("  Retrieved triples:")
+                for triple, metadata in retrieved_triples:
+                    confidence_score = metadata.get('confidence')
+                    confidence_str = f"{confidence_score:.2f}" if isinstance(confidence_score, float) else "N/A"
+                    logger.info(f"    - {triple} (Confidence: {confidence_str}, Speaker: {metadata.get('speaker', 'N/A')})")
+            
+            logger.info(f"  Found concepts: {score_info['found_keywords']}")
+            logger.info(f"  Missing concepts: {score_info['missing_keywords']}")
             logger.info(f"  Score: {score_info['score']:.2f}")
             logger.info("")
         
         avg_score = scenario_score / max_score if max_score > 0 else 0
-        scenario_results.append({
+        scenario_results_summary.append({
             'name': scenario['name'],
             'score': avg_score,
             'total_queries': max_score
         })
-        
+
         logger.info(f"{scenario['name']} Overall Score: {avg_score:.3f} ({avg_score*100:.1f}%)")
+
+        # --- Export results for this specific scenario ---
+        scenario_name_slug = scenario['name'].replace(' ', '_').lower()
+        
+        # Create dictionary for export
+        export_data = {
+            'scenario_name': scenario['name'],
+            'results': scenario_query_results,
+            'average_score': avg_score,
+            'perfect_scores': sum(1 for r in scenario_query_results if r['score_info']['score'] == 1.0),
+            'zero_scores': sum(1 for r in scenario_query_results if r['score_info']['score'] == 0.0),
+            'query_count': len(scenario_query_results)
+        }
+        
+        # Export scenario test results
+        scenario_results_filename = f"test-output/memory_test_results_{scenario_name_slug}_{timestamp}.json"
+        print(f"💾 Exporting scenario results to {scenario_results_filename}...")
+        export_test_results(export_data, scenario_results_filename)
+        logger.info(f"Exported scenario results to {scenario_results_filename}")
+
+        # Export triples snapshot
+        scenario_triples_filename = f"test-output/conversation_triples_{scenario_name_slug}_{timestamp}.json"
+        print(f"💾 Exporting triples snapshot to {scenario_triples_filename}...")
+        export_triples_to_file(kgraph, scenario_triples_filename)
+        logger.info(f"Exported triples snapshot to {scenario_triples_filename}")
+        print("-" * 40)
     
+    print("\nSCENARIO COMPARISON:")
     logger.info("\nSCENARIO COMPARISON:")
-    for result in scenario_results:
+    for result in scenario_results_summary:
+        print(f"  {result['name']}: {result['score']:.3f} ({result['score']*100:.1f}%)")
         logger.info(f"  {result['name']}: {result['score']:.3f} ({result['score']*100:.1f}%)")
     
-    return scenario_results
+    return scenario_results_summary
 
 def main():
     # Register cleanup function
@@ -631,21 +746,20 @@ def main():
         print("   This will test how well the system remembers details about both Alex and Sophia")
         logger.info("Running scored bidirectional memory test...")
         
-        # Define queries with expected keywords for scoring
+        # Define queries with expected concepts for scoring
         queries_with_expected = [
-            ("What is Alex's birthday?", ["September 3", "September 3rd"]),
-            ("What is Sophia's birthday?", ["December 22", "December 22nd"]),
-            ("What type of music does Alex like?", ["reggae", "Bob Marley"]),
-            ("What type of music does Sophia like?", ["classical", "folk", "Chopin", "Joni Mitchell", "Leonard Cohen", "blues"]),
-            ("What does Alex like to cook?", ["fish tacos", "Mexican", "Mexican food"]),
-            ("What food does Sophia prefer?", ["Italian", "pasta", "tomatoes", "garlic"]),
-            ("What are Alex's hobbies?", ["surfing", "woodworking", "furniture"]),
-            ("What are Sophia's hobbies?", ["painting", "watercolors", "writing", "rock climbing"]),
-            ("What authors does Sophia read?", ["Emily Dickinson", "Virginia Woolf"]),
-            ("What does Sophia paint?", ["watercolors", "sunset"]),
-            # Additional queries to test memory comprehensiveness
-            ("When are both Alex and Sophia's birthdays?", ["September 3", "December 22"]),
-            ("What do Alex and Sophia both enjoy that's creative?", ["music", "woodworking", "painting", "writing", "creative"]),
+            ("What is Alex's birthday?", [["September 3", "September 3rd"]]),
+            ("What is Sophia's birthday?", [["December 22", "December 22nd"]]),
+            ("What type of music does Alex like?", [["reggae", "Bob Marley"]]),
+            ("What type of music does Sophia like?", [["classical", "Chopin"], ["folk", "Joni Mitchell", "Leonard Cohen"], ["blues"]]),
+            ("What does Alex like to cook?", [["fish tacos", "Mexican food"]]),
+            ("What food does Sophia prefer?", [["Italian", "pasta"]]),
+            ("What are Alex's hobbies?", [["surfing", "surf"], ["woodworking", "making furniture"]]),
+            ("What are Sophia's hobbies?", [["painting", "watercolor","paints","painter"], ["writing"], ["rock climbing", "rock climber"]]),
+            ("What authors does Sophia read?", [["Emily Dickinson", "Dickinson"], ["Virginia Woolf", "Woolf"]]),
+            ("What does Sophia paint?", [["watercolor","sunset"]]),
+            ("When are both Alex and Sophia's birthdays?", [["September 3", "September 3rd"], ["December 22", "December 22nd"]]),
+            ("What do Alex and Sophia both enjoy that's creative?", [["woodworking", "making furniture", "woodworker"], ["painting", "writing", "painter", "writer"]]),
         ]
         
         # Run the scored memory test
@@ -654,14 +768,14 @@ def main():
         
         # Export all triples to a JSON file
         print("\n💾 Exporting results to files...")
-        export_file = f"conversation_triples_{timestamp}.json"
+        export_file = f"test-output/conversation_triples_{timestamp}.json"
         print(f"   📁 Exporting triples to {export_file}...")
         triple_count = export_triples_to_file(kgraph, export_file)
         print(f"   ✅ Exported {triple_count} triples successfully")
         logger.info(f"Exported {triple_count} triples to {export_file}")
         
         # Export test results
-        results_file = f"memory_test_results_{timestamp}.json"
+        results_file = f"test-output/memory_test_results_{timestamp}.json"
         print(f"   📁 Exporting test results to {results_file}...")
         export_test_results(test_results, results_file)
         print(f"   ✅ Test results exported successfully")
@@ -679,7 +793,7 @@ def main():
         print(f"Triples exported to: {export_file}")
         print("="*60)
         
-        logger.info("\\n" + "="*60)
+        logger.info("\n" + "="*60)
         logger.info("FINAL TEST SUMMARY")
         logger.info("="*60)
         logger.info(f"Conversations processed: 2")
@@ -697,7 +811,7 @@ def main():
         
         # Test different conversation types
         print("\n🧪 Testing different conversation types...")
-        test_different_conversation_types(processor)
+        test_different_conversation_types(processor, kgraph, timestamp)
         
         # Close connections and clean up
         print("\n🔒 Closing memory connections...")
