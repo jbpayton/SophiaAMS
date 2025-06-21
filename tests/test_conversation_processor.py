@@ -164,17 +164,20 @@ def run_scored_memory_test(processor, queries_with_expected):
         logger.info(f"\nQuery {i}/#{len(queries_with_expected)}: '{query}'")
         logger.info(f"Expected concepts: {expected_concepts}")
         
-        # Query the memory
+        # Query the memory directly
         print("   ⏳ Searching memory...")
-        query_result = processor.query_conversation_memory(
-            query=query,
+        result = processor.memory.query_related_information(
+            text=query,
             entity_name="Sophia",
             limit=5,
-            min_confidence=0.6
+            min_confidence=0.6,
+            include_summary_triples=True,
+            hop_depth=1
         )
-        
-        summary = query_result.get('summary', 'No summary provided.')
-        retrieved_triples = query_result.get('triples', [])
+
+        retrieved_triples = result.get('triples', [])
+        summary = result.get('summary', 'No summary provided.')
+        triple_count = result.get('triple_count', len(retrieved_triples))
 
         # NEW: determine ranking position of first relevant triple (for MRR)
         def _alias_rank(expected, triples_sorted):
@@ -221,11 +224,11 @@ def run_scored_memory_test(processor, queries_with_expected):
             print(f"   ❌ Low score ({score_info['score']:.2f}): Only found {score_info['found_keywords']}")
             print(f"   🔍 Missing: {score_info['missing_keywords']}")
         
-        print(f"   📊 Found {query_result.get('triple_count', 0)} related memories")
+        print(f"   📊 Found {triple_count} related memories")
         print("")
         
         # Log results
-        logger.info(f"Found {query_result.get('triple_count', 0)} related memories")
+        logger.info(f"Found {triple_count} related memories")
         logger.info(f"Summary: {summary}")
         logger.info(f"Score: {score_info['score']:.2f} ({score_info['details']})")
         
@@ -245,7 +248,7 @@ def run_scored_memory_test(processor, queries_with_expected):
         result_data = {
             'query': query,
             'expected_concepts': expected_concepts,
-            'triple_count': query_result.get('triple_count', 0),
+            'triple_count': triple_count,
             'summary': summary,
             'retrieved_triples': retrieved_triples,
             'score_info': score_info,
@@ -583,15 +586,17 @@ def test_different_conversation_types(processor, kgraph, timestamp):
             logger.info(f"  Query: {query}")
             logger.info(f"  Expected: {expected_concepts}")
             
-            query_result = processor.query_conversation_memory(
-                query=query,
+            result = processor.memory.query_related_information(
+                text=query,
                 entity_name="TestScenario",
                 limit=5,
-                min_confidence=0.6
+                min_confidence=0.6,
+                include_summary_triples=True,
+                hop_depth=1
             )
             
-            summary = query_result.get('summary', 'No summary provided.')
-            retrieved_triples = query_result.get('triples', [])
+            summary = result.get('summary', 'No summary provided.')
+            retrieved_triples = result.get('triples', [])
             
             # Calculate score
             score_info = calculate_answer_score(expected_concepts, summary, query)
@@ -602,7 +607,7 @@ def test_different_conversation_types(processor, kgraph, timestamp):
             result_data = {
                 'query': query,
                 'expected_concepts': expected_concepts,
-                'triple_count': query_result.get('triple_count', 0),
+                'triple_count': len(retrieved_triples),
                 'summary': summary,
                 'retrieved_triples': retrieved_triples,
                 'score_info': score_info,

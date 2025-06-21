@@ -123,15 +123,16 @@ def _test_queries(memory, logging):
         try:
             query_start = time.time()
             logging.info(f"\nQuery: {query}")
-            related = memory.query_related_information(query)
-            logging.info(f"Found {len(related)} related triples in {time.time() - query_start:.2f}s")
+            result = memory.query_related_information(text=query)
+            related = result.get('triples', [])
+            logging.info(f"Found {result.get('triple_count', len(related))} related triples in {time.time() - query_start:.2f}s")
             
             # Print a summary of the results
             if related:
                 summary_start = time.time()
                 logging.info("\nSummary:")
                 try:
-                    summary = memory.summarize_results(related)
+                    summary = result.get('summary', '') or memory.summarize_results(query, related)
                     logging.info(summary)
                     logging.info(f"Summary generation time: {time.time() - summary_start:.2f}s")
                     # Verify topics in related triples
@@ -145,7 +146,7 @@ def _test_queries(memory, logging):
                     # Try with just the first 5 triples if there are too many
                     if len(related) > 8:
                         try:
-                            limited_summary = memory.summarize_results(related[:8])
+                            limited_summary = memory.summarize_results(query, related[:8])
                             logging.info("Limited summary (first 8 triples only):")
                             logging.info(limited_summary)
                             logging.info(f"Limited summary generation time: {time.time() - summary_start:.2f}s")
@@ -176,11 +177,19 @@ def _log_retrieved_triples(related, logging):
                 logging.info(f"   Source: {triple.get('source', 'N/A')}")
             # Try to access as a tuple
             elif isinstance(triple, tuple):
-                logging.info(f"{i+1}. Subject: {triple[0] if len(triple) > 0 else 'N/A'}")
-                logging.info(f"   Predicate: {triple[1] if len(triple) > 1 else 'N/A'}")
-                logging.info(f"   Object: {triple[2] if len(triple) > 2 else 'N/A'}")
-                logging.info(f"   Confidence: N/A")
-                logging.info(f"   Source: N/A")
+                # Handle (triple, metadata) structure
+                if len(triple) == 2 and isinstance(triple[0], (list, tuple)):
+                    subj, pred, obj = triple[0]
+                    meta = triple[1]
+                    conf = meta.get('confidence', 'N/A') if isinstance(meta, dict) else 'N/A'
+                    logging.info(f"{i+1}. Subject: {subj}")
+                    logging.info(f"   Predicate: {pred}")
+                    logging.info(f"   Object: {obj}")
+                    logging.info(f"   Confidence: {conf}")
+                else:
+                    logging.info(f"{i+1}. Subject: {triple[0] if len(triple) > 0 else 'N/A'}")
+                    logging.info(f"   Predicate: {triple[1] if len(triple) > 1 else 'N/A'}")
+                    logging.info(f"   Object: {triple[2] if len(triple) > 2 else 'N/A'}")
             else:
                 logging.info(f"{i+1}. Triple format unknown: {type(triple)}")
                 logging.info(f"   Contents: {triple}")
@@ -217,8 +226,10 @@ def _cleanup_and_summary(total_start, test_urls, total_processed, total_failed, 
     
     logging.info("Cleaning up resources")
     memory.close()
-    if os.path.exists("Test_DocumentProcessing"):
-        shutil.rmtree("Test_DocumentProcessing")
+    # Use same directory path that was used to create the graph
+    graph_dir = "test-output/Test_DocumentProcessing"
+    if os.path.exists(graph_dir):
+        shutil.rmtree(graph_dir)
     logging.info("Test run completed")
 
 

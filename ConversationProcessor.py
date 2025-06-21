@@ -153,52 +153,6 @@ class ConversationProcessor:
         if entity_references:
             self._create_entity_reference_triples(entity_references, global_timestamp)
     
-    def query_conversation_memory(self, query: str, entity_name: Optional[str] = None, 
-                                 limit: int = 10, min_confidence: Optional[float] = 0.6,
-                                 speaker: Optional[str] = None) -> Dict:
-        """Thin wrapper that delegates retrieval to AssociativeSemanticMemory."""
-        self.logger.info(f"Querying conversation memory via ASM: '{query}'")
-        start_time = time.time()
-        try:
-            triples = self.memory.query_related_information(
-                text=query,
-                entity_name=entity_name,
-                speaker=speaker,
-                limit=limit,
-                min_confidence=min_confidence,
-                include_summary_triples=True,
-                hop_depth=1
-            )
-            query_time = time.time() - start_time
-
-            # Generate summary if any triple found
-            summary = None
-            if triples:
-                try:
-                    summary = self.memory.summarize_results(query, triples)
-                except Exception as e:
-                    self.logger.error(f"Error generating summary: {e}")
-
-            return {
-                'success': True,
-                'query': query,
-                'entity_name': entity_name,
-                'speaker': speaker,
-                'triples': triples,
-                'triple_count': len(triples),
-                'summary': summary,
-                'query_time': query_time
-            }
-        except Exception as e:
-            self.logger.error(f"Error in delegated query: {e}")
-            return {
-                'success': False,
-                'query': query,
-                'entity_name': entity_name,
-                'error': str(e),
-                'query_time': time.time() - start_time
-            }
-
     def _create_entity_reference_triples(self, entity_references: Dict[str, str], timestamp: float):
         """
         Create reference triples that link different names for the same entity.

@@ -67,11 +67,13 @@ def extract_triples_from_string(
     else:
         prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
     
-    # Call the LLM
+    # Respect an environment knob for output length; default generously high
+    extraction_max_tokens = int(os.getenv('EXTRACTION_MAX_TOKENS', '2048'))
     response = client.chat.completions.create(
         model=os.getenv('EXTRACTION_MODEL', 'gemma-3-4b-it-qat'),
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.0
+        temperature=0.0,
+        max_tokens=extraction_max_tokens
     )
     
     # Parse the response

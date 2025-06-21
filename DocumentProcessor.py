@@ -814,8 +814,17 @@ class DocumentProcessor:
                 chunk_time = time.time() - chunk_start
                 self.logger.info(f"Successfully processed chunk {i+1} in {chunk_time:.2f}s")
                 # --- ADDED: Log extracted triples ---
-                original_extracted = result.get('original_triples', {}).get('triples', [])
-                summary_extracted = result.get('summary_triples', {}).get('triples', [])
+                orig_tmp = result.get('original_triples', [])
+                if isinstance(orig_tmp, dict):
+                    original_extracted = orig_tmp.get('triples', [])
+                else:
+                    original_extracted = orig_tmp
+
+                sum_tmp = result.get('summary_triples', [])
+                if isinstance(sum_tmp, dict):
+                    summary_extracted = sum_tmp.get('triples', [])
+                else:
+                    summary_extracted = sum_tmp
                 self.logger.debug(f"Chunk {i+1} original triples ({len(original_extracted)}): {json.dumps(original_extracted, indent=2)}")
                 self.logger.debug(f"Chunk {i+1} summary triples ({len(summary_extracted)}): {json.dumps(summary_extracted, indent=2)}")
                 # ----------------------------------

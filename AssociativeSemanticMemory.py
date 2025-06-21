@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from VectorKnowledgeGraph import VectorKnowledgeGraph
 from triple_extraction import extract_triples_from_string
 from ContextSummarizers import ContextSummarizers
@@ -178,8 +178,10 @@ class AssociativeSemanticMemory:
         limit: int = 10,
         min_confidence: Optional[float] = 0.6,
         include_summary_triples: bool = True,
-        hop_depth: int = 0
-    ) -> List:
+        hop_depth: int = 0,
+        return_summary: bool = True,
+        include_triples: bool = True
+    ) -> Any:
         """
         Enhanced retrieval that blends vector similarity, topic similarity and optional hop expansion.
         Results are filtered and sorted by confidence.
@@ -285,7 +287,26 @@ class AssociativeSemanticMemory:
         filtered = filtered[:limit] if limit else filtered
 
         logging.info(f"[ASM] Returning {len(filtered)} triples (limit={limit}) after blending & filtering")
-        return filtered
+
+        if not return_summary:
+            # Preserve previous behaviour – just a list of triples
+            return filtered
+
+        # Build summary and structured result
+        try:
+            summary_text = self.summarize_results(text, filtered)
+        except Exception as e:
+            logging.error(f"Summary generation failed: {e}")
+            summary_text = "Summary unavailable due to error."
+
+        result_dict = {
+            "summary": summary_text,
+            "triple_count": len(filtered)
+        }
+        if include_triples:
+            result_dict["triples"] = filtered
+
+        return result_dict
 
     def _get_entity_references(self, entity: str) -> List[str]:
         """
@@ -379,10 +400,12 @@ The facts are sorted by relevance. Prioritize the most relevant ones to form a c
             api_key=os.getenv('LLM_API_KEY'),
         )
         
+        summary_max_tokens = int(os.getenv('SUMMARY_MAX_TOKENS', '1024'))
         response = client.chat.completions.create(
             model=os.getenv('SUMMARIZATION_MODEL', 'gemma-3-4b-it-qat'),
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
+            temperature=0.7,
+            max_tokens=summary_max_tokens
         )
         
         logging.info("Successfully generated summary")
