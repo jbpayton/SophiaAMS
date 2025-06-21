@@ -154,86 +154,43 @@ class ConversationProcessor:
             self._create_entity_reference_triples(entity_references, global_timestamp)
     
     def query_conversation_memory(self, query: str, entity_name: Optional[str] = None, 
-                                 limit: int = 10, min_confidence: float = 0.6,
+                                 limit: int = 10, min_confidence: Optional[float] = 0.6,
                                  speaker: Optional[str] = None) -> Dict:
-        """
-        Query the semantic memory for conversation-related information.
-        
-        Args:
-            query: The query to find related information
-            entity_name: Optional entity name to filter results (if None, get all)
-            limit: Maximum number of triples to return
-            min_confidence: Minimum confidence score for triples
-            speaker: Optional speaker name to filter results
-            
-        Returns:
-            Dict containing query results
-        """
-        self.logger.info(f"Querying conversation memory: '{query}'")
-        
+        """Thin wrapper that delegates retrieval to AssociativeSemanticMemory."""
+        self.logger.info(f"Querying conversation memory via ASM: '{query}'")
         start_time = time.time()
-        
         try:
-            # Query the memory system
-            related = self.memory.query_related_information(
+            triples = self.memory.query_related_information(
                 text=query,
-                include_summary_triples=True
+                entity_name=entity_name,
+                speaker=speaker,
+                limit=limit,
+                min_confidence=min_confidence,
+                include_summary_triples=True,
+                hop_depth=1
             )
-            
-            # Filtered results list
-            filtered_related = []
-            
-            # Apply filters
-            for triple, metadata in related:
-                # Check entity filter if specified
-                if entity_name:
-                    triple_entity = metadata.get('entity', '')
-                    if triple_entity != entity_name and triple_entity:
-                        continue
-                
-                # Check speaker filter if specified
-                if speaker:
-                    triple_speaker = metadata.get('speaker', '')
-                    if triple_speaker != speaker and triple_speaker:
-                        continue
-                
-                # Entry passed all filters
-                filtered_related.append((triple, metadata))
-            
-            # Use filtered results
-            related = filtered_related
-            
-            # Log filter results
-            if entity_name:
-                self.logger.info(f"Filtered to {len(related)} triples matching entity '{entity_name}'")
-            if speaker:
-                self.logger.info(f"Filtered to {len(related)} triples from speaker '{speaker}'")
-            
             query_time = time.time() - start_time
-            self.logger.info(f"Found {len(related)} related triples in {query_time:.2f}s")
-            
-            # Generate a summary if results were found
+
+            # Generate summary if any triple found
             summary = None
-            if related:
+            if triples:
                 try:
-                    summary = self.memory.summarize_results(query, related)
-                    self.logger.info(f"Generated summary of results")
+                    summary = self.memory.summarize_results(query, triples)
                 except Exception as e:
-                    self.logger.error(f"Error generating summary: {str(e)}")
-            
+                    self.logger.error(f"Error generating summary: {e}")
+
             return {
                 'success': True,
                 'query': query,
                 'entity_name': entity_name,
                 'speaker': speaker,
-                'triples': related,
-                'triple_count': len(related),
+                'triples': triples,
+                'triple_count': len(triples),
                 'summary': summary,
                 'query_time': query_time
             }
-            
         except Exception as e:
-            self.logger.error(f"Error querying conversation memory: {str(e)}")
+            self.logger.error(f"Error in delegated query: {e}")
             return {
                 'success': False,
                 'query': query,

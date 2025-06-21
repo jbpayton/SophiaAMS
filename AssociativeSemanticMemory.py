@@ -160,42 +160,133 @@ class AssociativeSemanticMemory:
         # Removed separate 'topics' key from result
         return result
 
-    def query_related_information(self, text: str, include_summary_triples: bool = True) -> List:
+    def _extract_candidate_topics(self, text: str, max_topics: int = 5) -> List[str]:
+        """Very lightweight topic extraction: keep meaningful non-stopwords longer than 3 chars."""
+        stopwords = {
+            'the', 'and', 'for', 'with', 'that', 'this', 'about', 'what', 'where', 'when',
+            'how', 'why', 'who', 'are', 'is', 'was', 'were', 'does', 'did', 'do',
+        }
+        tokens = [t.strip(".,!?()'\" ").lower() for t in text.split()]
+        candidates = [t for t in tokens if len(t) > 3 and t not in stopwords]
+        return list(dict.fromkeys(candidates))[:max_topics]
+
+    def query_related_information(
+        self,
+        text: str,
+        entity_name: Optional[str] = None,
+        speaker: Optional[str] = None,
+        limit: int = 10,
+        min_confidence: Optional[float] = 0.6,
+        include_summary_triples: bool = True,
+        hop_depth: int = 0
+    ) -> List:
         """
-        Query the knowledge graph for information related to the input text using a
-        holistic, semantic search over triple content.
-
-        Args:
-            text: Text to find related information for
-            include_summary_triples: Whether to include triples from summaries
-
-        Returns:
-            list: Related (triple, metadata) tuples, ordered by confidence score
+        Enhanced retrieval that blends vector similarity, topic similarity and optional hop expansion.
+        Results are filtered and sorted by confidence.
         """
-        logging.info(f"Querying related information for: '{text}'")
+        logging.info(f"[ASM] Querying related information for: '{text}'")
 
-        # Use the new holistic text similarity search
+        # ---------------- High-recall channels ----------------
+        combined: Dict[Tuple[str, str, str], Dict] = {}
+
+        def _add_results(results):
+            for triple, meta in results:
+                key = tuple(triple)
+                conf = meta.get('confidence', 0.0)
+                if key not in combined or conf > combined[key]['confidence']:
+                    combined[key] = meta
+
+        # 1. Full-text vector similarity
         try:
-            all_results = self.kgraph.find_triples_by_text_similarity(
+            vec_results = self.kgraph.find_triples_by_text_similarity(
                 query_text=text,
                 return_metadata=True,
                 similarity_threshold=0.2,
-                limit=25
+                limit=max(50, limit*5)
             )
         except Exception as e:
             logging.error(f"Error during text similarity search: {e}")
-            all_results = []
-        
-        # Filter out summary triples if not requested
-        if not include_summary_triples:
-            final_results = [(t, m) for t, m in all_results if not m.get("is_from_summary", False)]
-        else:
-            final_results = all_results
+            vec_results = []
+        _add_results(vec_results)
 
-        # The results from find_triples_by_text_similarity are already sorted by confidence
-        logging.info(f"Found {len(final_results)} related triples.")
-        return final_results
-        
+        # 2. Topic vector similarity
+        topics = self._extract_candidate_topics(text)
+        if topics:
+            try:
+                topic_results = self.kgraph.find_triples_by_vectorized_topics(
+                    query_topics=topics,
+                    return_metadata=True,
+                    similarity_threshold=0.2,
+                    limit=max(50, limit*5)
+                )
+                # Give a small boost to mark topic-channel origin
+                for _, meta in topic_results:
+                    meta['confidence'] = meta.get('confidence', 0.0) * 1.05
+            except Exception as e:
+                logging.error(f"Error during topic similarity search: {e}")
+                topic_results = []
+            _add_results(topic_results)
+
+        # ---------------- Predicate boost ----------------
+        query_lc = text.lower()
+        for triple_key, meta in combined.items():
+            rel = (triple_key[1] or '').lower()
+            if rel and rel in query_lc:
+                meta['confidence'] = meta.get('confidence', 0.0) * 1.15
+
+        # ---------------- Hop expansion ----------------
+        if hop_depth and hop_depth > 0:
+            # pick top 3 seeds above 0.65
+            seeds = sorted(combined.items(), key=lambda kv: kv[1].get('confidence', 0.0), reverse=True)[:3]
+            for (subj, rel, obj), meta in seeds:
+                if meta.get('confidence', 0.0) < 0.65:
+                    continue
+                try:
+                    hop_triples = self.kgraph.build_graph_from_subject_relationship(
+                        (obj, rel), similarity_threshold=0.8, max_results=10, return_metadata=True
+                    )
+                    for hop_triple, hop_meta in hop_triples:
+                        hop_meta = dict(hop_meta)
+                        hop_meta['confidence'] = meta.get('confidence', 0.0) * 0.6  # decay
+                        hop_meta['is_hop'] = True
+                        _add_results([(hop_triple, hop_meta)])
+                except Exception as e:
+                    logging.debug(f"Hop expansion failed for {obj}: {e}")
+
+        # ---------------- Combine & sort ----------------
+        results_list = [(list(k), v) for k, v in combined.items()]
+
+        # Filter summary triples if needed
+        if not include_summary_triples:
+            results_list = [r for r in results_list if not r[1].get('is_from_summary', False)]
+
+        # Entity / speaker filters
+        filtered = []
+        for triple, meta in results_list:
+            if entity_name:
+                ent = meta.get('entity', '')
+                if ent and ent != entity_name:
+                    continue
+            if speaker:
+                spk = meta.get('speaker', '')
+                if spk and spk != speaker:
+                    continue
+            filtered.append((tuple(triple), meta))
+
+        # Sort by confidence descending
+        filtered.sort(key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+
+        # Elastic cut-off
+        guarantee_k = max(1, min(limit, 5))
+        if min_confidence is not None and min_confidence >= 0:
+            above = [r for r in filtered if r[1].get('confidence', 0.0) >= min_confidence]
+            if len(above) >= guarantee_k:
+                filtered = above
+        filtered = filtered[:limit] if limit else filtered
+
+        logging.info(f"[ASM] Returning {len(filtered)} triples (limit={limit}) after blending & filtering")
+        return filtered
+
     def _get_entity_references(self, entity: str) -> List[str]:
         """
         Get all entity references for a given entity.

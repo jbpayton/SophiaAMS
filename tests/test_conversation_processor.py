@@ -151,6 +151,7 @@ def run_scored_memory_test(processor, queries_with_expected):
     """
     results = []
     total_score = 0.0
+    total_reciprocal_rank = 0.0
     
     logger.info("=" * 60)
     logger.info("RUNNING SCORED MEMORY TEST")
@@ -175,15 +176,32 @@ def run_scored_memory_test(processor, queries_with_expected):
         summary = query_result.get('summary', 'No summary provided.')
         retrieved_triples = query_result.get('triples', [])
 
+        # NEW: determine ranking position of first relevant triple (for MRR)
+        def _alias_rank(expected, triples_sorted):
+            # Flatten aliases list
+            aliases = [a for sub in expected for a in sub]
+            for idx, (triple_tuple, _meta) in enumerate(triples_sorted):
+                triple_text = " ".join(triple_tuple).lower()
+                if any(alias.lower() in triple_text for alias in aliases):
+                    return idx + 1  # 1-indexed rank
+            return None
+
+        # Sort triples by confidence for ranking calculations (use full list, not truncated)
+        sorted_triples_full = sorted(retrieved_triples, key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+        rank_pos = _alias_rank(expected_concepts, sorted_triples_full)
+        reciprocal_rank = 1 / rank_pos if rank_pos else 0
+
         # Calculate score
         score_info = calculate_answer_score(expected_concepts, summary, query)
+        score_info['rank'] = rank_pos
+        score_info['reciprocal_rank'] = reciprocal_rank
         
         # Show immediate feedback
         print(f"   📝 Summary: {summary}")
         if retrieved_triples:
             print(f"   🧠 Retrieved {len(retrieved_triples)} triples:")
-            # Sort by confidence if available
-            sorted_triples = sorted(retrieved_triples, key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+            # Sort by confidence if available (reuse sorted_triples_full)
+            sorted_triples = sorted_triples_full
             for i, (triple, metadata) in enumerate(sorted_triples[:3]): # Show top 3
                 confidence_score = metadata.get('confidence')
                 confidence_str = f"{confidence_score:.2f}" if isinstance(confidence_score, float) else "N/A"
@@ -234,6 +252,8 @@ def run_scored_memory_test(processor, queries_with_expected):
         }
         results.append(result_data)
         total_score += score_info['score']
+        # Accumulate reciprocal ranks for overall MRR
+        total_reciprocal_rank += reciprocal_rank
         
         logger.info("-" * 50)
     
@@ -279,10 +299,14 @@ def run_scored_memory_test(processor, queries_with_expected):
     logger.info(f"Overall Grade: {grade}")
     logger.info("=" * 60)
     
+    average_mrr = total_reciprocal_rank / len(queries_with_expected) if queries_with_expected else 0.0
+    logger.info(f"Mean Reciprocal Rank (MRR): {average_mrr:.3f}")
+    
     return {
         'results': results,
         'total_score': total_score,
         'average_score': average_score,
+        'average_mrr': average_mrr,
         'perfect_scores': perfect_scores,
         'zero_scores': zero_scores,
         'grade': grade,
@@ -660,174 +684,167 @@ def test_different_conversation_types(processor, kgraph, timestamp):
     
     return scenario_results_summary
 
+# ============================================
+# NEW HELPER & WRAPPER FUNCTIONS (REFACTORING)
+# ============================================
+
+def initialize_memory():
+    """Initializes the VectorKnowledgeGraph, AssociativeSemanticMemory and ConversationProcessor.
+
+    Returns
+    -------
+    Tuple (kgraph, memory, processor)
+    """
+    print("📚 Initializing knowledge graph and memory...")
+    logger.info("Initializing knowledge graph and memory stack")
+    kgraph = VectorKnowledgeGraph(path=TEST_DIR)
+    memory = AssociativeSemanticMemory(kgraph)
+    processor = ConversationProcessor(memory)
+    print("✅ Memory system initialized successfully!")
+    return kgraph, memory, processor
+
+
+def test_bidirectional_memory(processor, kgraph, timestamp):
+    """Runs the original two-conversation bidirectional memory test.
+
+    Returns
+    -------
+    (triple_count, test_results) as produced by the existing helper utilities
+    """
+    # ----- Conversation #1 (as in the original script) -----
+    logger.info("Creating first conversation with personal details for bidirectional memory test")
+    first_conversation = [
+        {"role": "system", "content": "You are Sophia, a helpful AI assistant who remembers personal details about users."},
+        {"role": "user", "name": "Alex", "content": "Hi Sophia, it's Alex again!"},
+        {"role": "assistant", "name": "Sophia", "content": "Hello Alex! Great to see you back. I was just listening to some Chopin - his nocturnes always help me focus. How have you been?"},
+        {"role": "user", "name": "Alex", "content": "Oh nice! I didn't know you liked classical music. I'm doing well - my birthday is coming up on September 3rd and I'm planning a barbecue."},
+        {"role": "assistant", "name": "Sophia", "content": "September 3rd - I'll make sure to remember that! A barbecue sounds lovely. You know, my birthday is actually in December on the 22nd. I always love celebrating near the holidays. What kind of food are you planning for your barbecue?"},
+        {"role": "user", "name": "Alex", "content": "That's so cool that we're both celebrating this year! I'm thinking Mexican food - maybe my specialty fish tacos. What's your favorite type of cuisine?"},
+        {"role": "assistant", "name": "Sophia", "content": "December birthdays are special! I absolutely love Italian food - especially pasta dishes with fresh tomatoes and garlic. Your fish tacos sound amazing though. Are you planning any music for the barbecue?"},
+        {"role": "user", "name": "Alex", "content": "I'm a huge fan of reggae music, especially Bob Marley. I'll probably make a playlist with his songs and similar artists. What about you - besides classical, do you like any other genres?"},
+        {"role": "assistant", "name": "Sophia", "content": "Bob Marley is perfect for a barbecue! Besides classical, I really enjoy folk music - particularly Joni Mitchell and Leonard Cohen. There's something about their storytelling that fascinates me. I also have a soft spot for blues when I want something more soulful."},
+        {"role": "user", "name": "Alex", "content": "That's such an interesting mix! I should explore more folk music. Do you have any hobbies besides music?"},
+        {"role": "assistant", "name": "Sophia", "content": "I love painting watercolors and writing short stories - Emily Dickinson and Virginia Woolf are particular inspirations of mine. I also enjoy rock climbing, especially outdoor routes. There's something therapeutic about the physical challenge. What about you - any hobbies outside of cooking?"},
+        {"role": "user", "name": "Alex", "content": "I love surfing and woodworking, especially making furniture. It's amazing how we both appreciate creative and outdoor activities!"}
+    ]
+
+    print("\n💬 Processing bidirectional memory conversation (1/2)...")
+    result = processor.process_conversation(messages=first_conversation, entity_name="Sophia")
+    if not result.get("success", False):
+        raise RuntimeError(f"Failed to process first conversation: {result.get('error')}")
+
+    # Wait briefly for vector store persistence
+    time.sleep(1)
+
+    # ----- Conversation #2  -----
+    logger.info("Creating follow-up conversation to exercise recall")
+    second_conversation = [
+        {"role": "system", "content": "You are Sophia, a helpful AI assistant who remembers personal details about users."},
+        {"role": "user", "name": "Alex", "content": "Hi Sophia! How are you doing today?"},
+        {"role": "assistant", "name": "Sophia", "content": "Hello Alex! I'm doing well, thank you. I was just working on a watercolor painting this morning - trying to capture a sunset scene. How are your barbecue preparations going?"},
+        {"role": "user", "name": "Alex", "content": "That's great! I forgot you're into painting. The barbecue is coming along well - I'm excited for September 3rd! When did you say your birthday was again?"},
+        {"role": "assistant", "name": "Sophia", "content": "My birthday is December 22nd! I'm looking forward to it. Are you still planning to make your fish tacos for the barbecue?"},
+        {"role": "user", "name": "Alex", "content": "Yes, definitely! And I've been working on that Bob Marley playlist. Have you been listening to any good folk music lately?"},
+        {"role": "assistant", "name": "Sophia", "content": "Oh wonderful! I actually discovered some new Joni Mitchell songs last week that I've been enjoying. Your reggae playlist should be perfect for the barbecue atmosphere. Have you been doing any interesting woodworking projects recently?"},
+        {"role": "user", "name": "Alex", "content": "I finished a coffee table last weekend! Speaking of your interests, have you read any good literature lately? I remember you mentioned loving Emily Dickinson."},
+        {"role": "assistant", "name": "Sophia", "content": "Yes! I've been revisiting some Virginia Woolf recently - her stream of consciousness style is particularly beautiful this time of year. I think you'd appreciate her nature descriptions given your love for surfing and the outdoors. Maybe we should plan something special for our birthdays since they're both coming up this year!"}
+    ]
+
+    print("\n💬 Processing bidirectional memory conversation (2/2)...")
+    result2 = processor.process_conversation(messages=second_conversation, entity_name="Sophia")
+    if not result2.get("success", False):
+        raise RuntimeError(f"Failed to process second conversation: {result2.get('error')}")
+
+    # ---------------- Memory Queries ----------------
+    queries_with_expected = [
+        ("What is Alex's birthday?", [["September 3", "September 3rd"]]),
+        ("What is Sophia's birthday?", [["December 22", "December 22nd"]]),
+        ("What type of music does Alex like?", [["reggae", "Bob Marley"]]),
+        ("What type of music does Sophia like?", [["classical", "Chopin"], ["folk", "Joni Mitchell", "Leonard Cohen"], ["blues"]]),
+        ("What does Alex like to cook?", [["fish tacos", "Mexican food"]]),
+        ("What food does Sophia prefer?", [["Italian", "pasta"]]),
+        ("What are Alex's hobbies?", [["surfing", "surf"], ["woodworking", "making furniture"]]),
+        ("What are Sophia's hobbies?", [["painting", "watercolor", "paints", "painter"], ["writing"], ["rock climbing", "rock climber"]]),
+        ("What authors does Sophia read?", [["Emily Dickinson", "Dickinson"], ["Virginia Woolf", "Woolf"]]),
+        ("What does Sophia paint?", [["watercolor", "sunset"]]),
+        ("When are both Alex and Sophia's birthdays?", [["September 3", "September 3rd"], ["December 22", "December 22nd"]]),
+        ("What do Alex and Sophia both enjoy that's creative?", [["woodworking", "making furniture", "woodworker"], ["painting", "writing", "painter", "writer"]]),
+    ]
+
+    print("\n🧠 Running bidirectional memory queries...")
+    test_results = run_scored_memory_test(processor, queries_with_expected)
+
+    # Export triples for later analysis
+    export_file = f"test-output/conversation_triples_{timestamp}.json"
+    triple_count = export_triples_to_file(kgraph, export_file)
+
+    # Export test results
+    results_file = f"test-output/memory_test_results_{timestamp}.json"
+    export_test_results(test_results, results_file)
+
+    return triple_count, test_results
+
+
+def test_triple_analysis(kgraph, timestamp):
+    """Wrapper around analyse_extracted_triples with fresh export from current graph."""
+    export_file = f"test-output/conversation_triples_{timestamp}.json"
+    if not os.path.exists(export_file):
+        # Ensure we at least have a snapshot
+        export_triples_to_file(kgraph, export_file)
+    return analyze_extracted_triples(export_file)
+
+
+def test_scenario_variations(processor, kgraph, timestamp):
+    """Runs the additional scenario variation tests (emotional support & memory sharing)."""
+    return test_different_conversation_types(processor, kgraph, timestamp)
+
+# ============================================
+# END NEW FUNCTIONS
+# ============================================
+
 def main():
-    # Register cleanup function
+    """Entry-point orchestrating the three organised tests."""
     atexit.register(cleanup_test_directory)
-    
-    print("🚀 Starting Enhanced Conversation Memory Test...")
+
+    print("🚀 Starting Conversation Memory Test Suite...")
     print("=" * 60)
-    
     try:
-        # Initialize knowledge graph and memory
-        print("📚 Initializing knowledge graph and memory...")
-        kgraph = VectorKnowledgeGraph(path=TEST_DIR)
-        memory = AssociativeSemanticMemory(kgraph)
-        processor = ConversationProcessor(memory)
-        print("✅ Memory system initialized successfully!")
-        
-        # First conversation with personal details
-        print("\n💬 Creating first conversation with bidirectional personal details...")
-        logger.info("Creating first conversation with personal details about both Alex and Sophia (don't treat Sophia as an assistant, treat her as a human who has her own personality and personal details)...")
-        first_conversation = [
-            {"role": "system", "content": "You are Sophia, a helpful AI assistant who remembers personal details about users."},
-            {"role": "user", "name": "Alex", "content": "Hi Sophia, it's Alex again!"},
-            {"role": "assistant", "name": "Sophia", "content": "Hello Alex! Great to see you back. I was just listening to some Chopin - his nocturnes always help me focus. How have you been?"},
-            {"role": "user", "name": "Alex", "content": "Oh nice! I didn't know you liked classical music. I'm doing well - my birthday is coming up on September 3rd and I'm planning a barbecue."},
-            {"role": "assistant", "name": "Sophia", "content": "September 3rd - I'll make sure to remember that! A barbecue sounds lovely. You know, my birthday is actually in December on the 22nd. I always love celebrating near the holidays. What kind of food are you planning for your barbecue?"},
-            {"role": "user", "name": "Alex", "content": "That's so cool that we're both celebrating this year! I'm thinking Mexican food - maybe my specialty fish tacos. What's your favorite type of cuisine?"},
-            {"role": "assistant", "name": "Sophia", "content": "December birthdays are special! I absolutely love Italian food - especially pasta dishes with fresh tomatoes and garlic. Your fish tacos sound amazing though. Are you planning any music for the barbecue?"},
-            {"role": "user", "name": "Alex", "content": "I'm a huge fan of reggae music, especially Bob Marley. I'll probably make a playlist with his songs and similar artists. What about you - besides classical, do you like any other genres?"},
-            {"role": "assistant", "name": "Sophia", "content": "Bob Marley is perfect for a barbecue! Besides classical, I really enjoy folk music - particularly Joni Mitchell and Leonard Cohen. There's something about their storytelling that fascinates me. I also have a soft spot for blues when I want something more soulful."},
-            {"role": "user", "name": "Alex", "content": "That's such an interesting mix! I should explore more folk music. Do you have any hobbies besides music?"},
-            {"role": "assistant", "name": "Sophia", "content": "I love painting watercolors and writing short stories - Emily Dickinson and Virginia Woolf are particular inspirations of mine. I also enjoy rock climbing, especially outdoor routes. There's something therapeutic about the physical challenge. What about you - any hobbies outside of cooking?"},
-            {"role": "user", "name": "Alex", "content": "I love surfing and woodworking, especially making furniture. It's amazing how we both appreciate creative and outdoor activities!"}
-        ]
-        
-        # Process the first conversation
-        print("🔄 Processing first conversation (extracting triples and building memory)...")
-        print("   This may take a moment as we extract detailed relationships...")
-        result = processor.process_conversation(
-            messages=first_conversation,
-            entity_name="Sophia"        )
-        
-        if result['success']:
-            print(f"✅ Successfully processed conversation with {result['processed_messages']} messages")
-            logger.info(f"Successfully processed conversation with {result['processed_messages']} messages")
-        else:
-            print(f"❌ Failed to process conversation: {result.get('error', 'Unknown error')}")
-            logger.error(f"Failed to process conversation: {result.get('error', 'Unknown error')}")
-            return
-        
-        # Wait a moment to let processing complete
-        print("⏳ Allowing memory consolidation...")
-        time.sleep(1)
-        
-        # Follow-up conversation that tests bidirectional memory
-        print("\n💬 Creating second conversation to test memory recall...")
-        logger.info("Creating second conversation that tests memory of both Alex's and Sophia's details...")
-        second_conversation = [
-            {"role": "system", "content": "You are Sophia, a helpful AI assistant who remembers personal details about users."},
-            {"role": "user", "name": "Alex", "content": "Hi Sophia! How are you doing today?"},
-            {"role": "assistant", "name": "Sophia", "content": "Hello Alex! I'm doing well, thank you. I was just working on a watercolor painting this morning - trying to capture a sunset scene. How are your barbecue preparations going?"},
-            {"role": "user", "name": "Alex", "content": "That's great! I forgot you're into painting. The barbecue is coming along well - I'm excited for September 3rd! When did you say your birthday was again?"},
-            {"role": "assistant", "name": "Sophia", "content": "My birthday is December 22nd! I'm looking forward to it. Are you still planning to make your fish tacos for the barbecue?"},
-            {"role": "user", "name": "Alex", "content": "Yes, definitely! And I've been working on that Bob Marley playlist. Have you been listening to any good folk music lately?"},
-            {"role": "assistant", "name": "Sophia", "content": "Oh wonderful! I actually discovered some new Joni Mitchell songs last week that I've been enjoying. Your reggae playlist should be perfect for the barbecue atmosphere. Have you been doing any interesting woodworking projects recently?"},
-            {"role": "user", "name": "Alex", "content": "I finished a coffee table last weekend! Speaking of your interests, have you read any good literature lately? I remember you mentioned loving Emily Dickinson."},
-            {"role": "assistant", "name": "Sophia", "content": "Yes! I've been revisiting some Virginia Woolf recently - her stream of consciousness style is particularly beautiful this time of year. I think you'd appreciate her nature descriptions given your love for surfing and the outdoors. Maybe we should plan something special for our birthdays since they're both coming up this year!"}
-        ]
-        
-        # Process the second conversation
-        print("🔄 Processing second conversation...")
-        result2 = processor.process_conversation(
-            messages=second_conversation,
-            entity_name="Sophia"
-        )
-        
-        if result2['success']:
-            print(f"✅ Successfully processed second conversation with {result2['processed_messages']} messages")
-            logger.info(f"Successfully processed second conversation with {result2['processed_messages']} messages")
-        else:
-            print(f"❌ Failed to process second conversation: {result2.get('error', 'Unknown error')}")
-            logger.error(f"Failed to process second conversation: {result2.get('error', 'Unknown error')}")
-        
-        # Query memory for key details about both Alex and Sophia using scored testing
-        print("\n🧠 Testing memory with bidirectional queries...")
-        print("   This will test how well the system remembers details about both Alex and Sophia")
-        logger.info("Running scored bidirectional memory test...")
-        
-        # Define queries with expected concepts for scoring
-        queries_with_expected = [
-            ("What is Alex's birthday?", [["September 3", "September 3rd"]]),
-            ("What is Sophia's birthday?", [["December 22", "December 22nd"]]),
-            ("What type of music does Alex like?", [["reggae", "Bob Marley"]]),
-            ("What type of music does Sophia like?", [["classical", "Chopin"], ["folk", "Joni Mitchell", "Leonard Cohen"], ["blues"]]),
-            ("What does Alex like to cook?", [["fish tacos", "Mexican food"]]),
-            ("What food does Sophia prefer?", [["Italian", "pasta"]]),
-            ("What are Alex's hobbies?", [["surfing", "surf"], ["woodworking", "making furniture"]]),
-            ("What are Sophia's hobbies?", [["painting", "watercolor","paints","painter"], ["writing"], ["rock climbing", "rock climber"]]),
-            ("What authors does Sophia read?", [["Emily Dickinson", "Dickinson"], ["Virginia Woolf", "Woolf"]]),
-            ("What does Sophia paint?", [["watercolor","sunset"]]),
-            ("When are both Alex and Sophia's birthdays?", [["September 3", "September 3rd"], ["December 22", "December 22nd"]]),
-            ("What do Alex and Sophia both enjoy that's creative?", [["woodworking", "making furniture", "woodworker"], ["painting", "writing", "painter", "writer"]]),
-        ]
-        
-        # Run the scored memory test
-        print(f"📝 Running {len(queries_with_expected)} memory test queries...")
-        test_results = run_scored_memory_test(processor, queries_with_expected)
-        
-        # Export all triples to a JSON file
-        print("\n💾 Exporting results to files...")
-        export_file = f"test-output/conversation_triples_{timestamp}.json"
-        print(f"   📁 Exporting triples to {export_file}...")
-        triple_count = export_triples_to_file(kgraph, export_file)
-        print(f"   ✅ Exported {triple_count} triples successfully")
-        logger.info(f"Exported {triple_count} triples to {export_file}")
-        
-        # Export test results
-        results_file = f"test-output/memory_test_results_{timestamp}.json"
-        print(f"   📁 Exporting test results to {results_file}...")
-        export_test_results(test_results, results_file)
-        print(f"   ✅ Test results exported successfully")
-        
-        # Final summary
-        print("\n" + "="*60)
-        print("🎯 FINAL TEST SUMMARY")
-        print("="*60)
-        print(f"Conversations processed: 2")
+        # --- Setup ---
+        kgraph, memory, processor = initialize_memory()
+
+        # --- Test 1: Bidirectional memory ---
+        triple_count, test_results = test_bidirectional_memory(processor, kgraph, timestamp)
+
+        # --- Test 2: Triple analysis ---
+        analysis_results = test_triple_analysis(kgraph, timestamp)
+
+        # --- Test 3: Scenario variations ---
+        scenario_summary = test_scenario_variations(processor, kgraph, timestamp)
+
+        # --- Final summary ---
+        print("\n" + "=" * 60)
+        print("🎯 FINAL TEST SUITE SUMMARY")
+        print("=" * 60)
         print(f"Total triples stored: {triple_count}")
-        print(f"Memory test score: {test_results['average_score']:.3f} ({test_results['average_score']*100:.1f}%)")
-        print(f"Memory test grade: {test_results['grade']}")
-        print(f"Perfect recall queries: {test_results['perfect_scores']}/{test_results['query_count']}")
-        print(f"Results exported to: {results_file}")
-        print(f"Triples exported to: {export_file}")
-        print("="*60)
-        
-        logger.info("\n" + "="*60)
-        logger.info("FINAL TEST SUMMARY")
-        logger.info("="*60)
-        logger.info(f"Conversations processed: 2")
-        logger.info(f"Total triples stored: {triple_count}")
-        logger.info(f"Memory test score: {test_results['average_score']:.3f} ({test_results['average_score']*100:.1f}%)")
-        logger.info(f"Memory test grade: {test_results['grade']}")
-        logger.info(f"Perfect recall queries: {test_results['perfect_scores']}/{test_results['query_count']}")
-        logger.info(f"Results exported to: {results_file}")
-        logger.info(f"Triples exported to: {export_file}")
-        logger.info("="*60)
-        
-        # Analyze extracted triples
-        print("\n🔍 Analyzing extracted triples for quality and accuracy...")
-        analysis_results = analyze_extracted_triples(export_file)
-        
-        # Test different conversation types
-        print("\n🧪 Testing different conversation types...")
-        test_different_conversation_types(processor, kgraph, timestamp)
-        
-        # Close connections and clean up
-        print("\n🔒 Closing memory connections...")
-        logger.info("Closing memory connections...")
+        print(f"Memory test average score: {test_results['average_score']:.3f} ({test_results['average_score']*100:.1f}%)")
+        print(f"Memory test MRR: {test_results.get('average_mrr', 0):.3f}")
+        print(f"Detail preservation score: {analysis_results.get('detail_score', 0):.3f}")
+        print("Scenario Scores:")
+        for scenario in scenario_summary:
+            print(f"  - {scenario['name']}: {scenario['score']:.3f} ({scenario['score']*100:.1f}%)")
+        print("=" * 60)
+
+        # Close memory connections before cleanup
         memory.close()
-        print("✅ Memory connections closed successfully")
-        
+        logger.info("Memory connections closed")
+
     except Exception as e:
-        print(f"❌ Test failed with error: {e}")
-        logger.error(f"Test failed with error: {e}", exc_info=True)
+        print(f"❌ Test suite failed: {e}")
+        logger.error("Test suite failed", exc_info=True)
     finally:
-        # Ensure cleanup happens
         print("🧹 Cleaning up test directory...")
         cleanup_test_directory()
-        print("✅ Test completed successfully!")
-        logger.info("Test completed")
+        print("✅ Test suite completed!")
 
 if __name__ == "__main__":
     main()
