@@ -82,6 +82,7 @@ target/
 profile_default/
 ipython_config.py
 
+WikiGraph/
 test-output/
 test-output/Test*
 chunks_*

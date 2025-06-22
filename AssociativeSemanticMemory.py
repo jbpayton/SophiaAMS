@@ -412,6 +412,11 @@ The facts are sorted by relevance. Prioritize the most relevant ones to form a c
         content = response.choices[0].message.content
         return content if content is not None else "Unable to generate summary."
 
+    def get_explorer(self):
+        """Return a MemoryExplorer bound to the current knowledge graph."""
+        from MemoryExplorer import MemoryExplorer  # local import to avoid circular dependency
+        return MemoryExplorer(self.kgraph)
+
 def cleanup_test_directory():
     """Clean up the test directory, ensuring all resources are released first."""
     try:
