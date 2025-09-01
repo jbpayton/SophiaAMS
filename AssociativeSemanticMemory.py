@@ -55,9 +55,7 @@ class AssociativeSemanticMemory:
         
         # Detect if this is a conversation based on source or content
         is_conversation = (
-            "conversation" in source.lower() or 
-            "SPEAKER:" in text or
-            speaker is not None
+            "conversation" in source.lower()
         )
         
         # Generate summary
@@ -190,12 +188,25 @@ class AssociativeSemanticMemory:
 
         # ---------------- High-recall channels ----------------
         combined: Dict[Tuple[str, str, str], Dict] = {}
+        subject_counts: Dict[str, int] = {}
 
-        def _add_results(results):
+        def _add_results(results, max_per_subject: int = 6):
+            """Add results with optional subject diversification to prevent saturation."""
             for triple, meta in results:
                 key = tuple(triple)
                 conf = meta.get('confidence', 0.0)
+                subject = triple[0]
+                
+                # Check if we've already hit the limit for this subject
+                current_count = subject_counts.get(subject, 0)
+                if current_count >= max_per_subject:
+                    continue
+                    
+                # Add or update if higher confidence
                 if key not in combined or conf > combined[key]['confidence']:
+                    # If this is a new addition, increment subject count
+                    if key not in combined:
+                        subject_counts[subject] = current_count + 1
                     combined[key] = meta
 
         # 1. Full-text vector similarity
@@ -384,6 +395,7 @@ class AssociativeSemanticMemory:
         # Create a prompt for the LLM to format this into a paragraph
         prompt = f"""Synthesize a concise, relevant paragraph in response to the following input text, using only the provided facts.
 The facts are sorted by relevance. Prioritize the most relevant ones to form a coherent response that directly addresses the input text.
+If one fact clearly and directly answers the input text, **include that fact verbatim** in the response before adding any supporting context.
 
 **Input Text:**
 {input_text}

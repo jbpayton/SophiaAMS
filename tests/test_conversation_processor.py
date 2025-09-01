@@ -169,7 +169,7 @@ def run_scored_memory_test(processor, queries_with_expected):
         result = processor.memory.query_related_information(
             text=query,
             entity_name="Sophia",
-            limit=5,
+            limit=10,
             min_confidence=0.6,
             include_summary_triples=True,
             hop_depth=1
@@ -589,7 +589,7 @@ def test_different_conversation_types(processor, kgraph, timestamp):
             result = processor.memory.query_related_information(
                 text=query,
                 entity_name="TestScenario",
-                limit=5,
+                limit=10,
                 min_confidence=0.6,
                 include_summary_triples=True,
                 hop_depth=1

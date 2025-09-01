@@ -65,7 +65,15 @@ def extract_triples_from_string(
     elif is_query:
         prompt = QUERY_EXTRACTION_PROMPT.format(text=text_to_extract)
     else:
-        prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
+        # Detect procedural instruction style (numbered steps or back-ticks / shell commands)
+        looks_like_instruction = any(
+            token in text_to_extract for token in ['`', '1)', '2)', 'systemctl', 'mkdir', 'backup_', 'deploy.sh']
+        )
+        if looks_like_instruction:
+            from prompts import INSTRUCTION_TRIPLE_EXTRACTION_PROMPT  # local import to avoid circular
+            prompt = INSTRUCTION_TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
+        else:
+            prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
     
     # Respect an environment knob for output length; default generously high
     extraction_max_tokens = int(os.getenv('EXTRACTION_MAX_TOKENS', '2048'))
@@ -87,14 +95,33 @@ def extract_triples_from_string(
                 think_end_index = content.rfind(think_end_tag)
                 json_content_start = think_end_index + len(think_end_tag)
                 actual_json_content = content[json_content_start:].strip()
-                if actual_json_content: # Ensure there is content after stripping
+                if actual_json_content:
+                    # Found JSON after </think>
                     result = json.loads(actual_json_content)
-                else: # If stripping results in empty string, means JSON was missing or malformed
-                    print(f"Warning: Stripped <think> block, but no subsequent JSON content found. Raw content: {content}")
-                    result = {"triples": []}
+                else:
+                    # Nothing after </think>; attempt to parse JSON *inside* the think block
+                    think_inner = content[len(think_start_tag):think_end_index].strip()
+                    try:
+                        result = json.loads(think_inner)
+                    except Exception:
+                        print("Warning: Could not parse JSON inside <think> block. Returning empty triples.")
+                        result = {"triples": []}
 
             else: # No <think> block detected, try to parse directly
-                result = json.loads(content)
+                # Strip markdown code blocks if present
+                if content.strip().startswith('```json') and content.strip().endswith('```'):
+                    json_start = content.find('```json') + 7
+                    json_end = content.rfind('```')
+                    actual_json_content = content[json_start:json_end].strip()
+                    result = json.loads(actual_json_content)
+                elif content.strip().startswith('```') and content.strip().endswith('```'):
+                    # Handle generic code blocks
+                    json_start = content.find('```') + 3
+                    json_end = content.rfind('```')
+                    actual_json_content = content[json_start:json_end].strip()
+                    result = json.loads(actual_json_content)
+                else:
+                    result = json.loads(content)
         else:
             result = {"triples": []}
         

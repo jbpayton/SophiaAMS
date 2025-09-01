@@ -23,6 +23,11 @@ def setup_logging(debug_mode: bool = False, log_file: Optional[str] = None):
     
     # Add file handler if log file specified
     if log_file:
+        # Create directory if it doesn't exist
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+            
         file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
         file_handler.setFormatter(formatter)
         file_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)

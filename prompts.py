@@ -6,11 +6,12 @@ TRIPLE_EXTRACTION_PROMPT = """Extract structured triples from text for a knowled
 
 Rules:
 1. For EACH triple, identify a list of concise and relevant topics for that specific piece of information, considering the overall themes of the entire input text.
-2. Use complete, meaningful verbs that capture the full relationship (e.g., "was developed by", "voice is provided by", "was released for").
-3. Objects should be specific entities, not partial actions (e.g., "Crypton Future Media" not "developed").
-4. Never leave the object empty - if no clear object exists, use "unknown" or "unspecified" for the object.
-5. Preserve important details like dates, locations, and specific entities in objects.
-6. The 'topics' field (note the plural) should be a list of strings. Each string in the list represents a relevant topic for that individual triple, derived from the overall themes of the entire input text.
+2. If the subject or object represents an instructional step—whether it is a full technical command (code snippet), a shell instruction, or natural-language procedural text (e.g., "stop the web service", "archive /var/www into a tar.gz file")—**preserve the wording verbatim**, including back-ticks or list numbering where present, so future queries can match the exact tokens.
+3. Use complete, meaningful verbs that capture the full relationship (e.g., "was developed by", "voice is provided by", "was released for").
+4. Objects should be specific entities, not partial actions (e.g., "Crypton Future Media" not "developed").
+5. Never leave the object empty - if no clear object exists, use "unknown" or "unspecified" for the object.
+6. Preserve important details like dates, locations, and specific entities in objects.
+7. The 'topics' field (note the plural) should be a list of strings. Each string in the list represents a relevant topic for that individual triple, derived from the overall themes of the entire input text.
 
 Examples:
 - Input Text: "Hatsune Miku was developed by Crypton Future Media. She was released in August 2007. Her voice is provided by Saki Fujita. She is a virtual singer. This technology is part of Japan's digital entertainment industry."
@@ -54,7 +55,7 @@ CORE RULES:
    - For EACH fact, identify a list of concise topics (e.g., ["Likes/Dislikes", "Personal Interests"], ["Work Details", "Career Information"], ["Hobbies", "Leisure Activities"], ["Personal Details", "Biography"]). These topics should consider the overall context of the conversation.
    - Use complete, meaningful verbs that capture the full relationship.
    - Objects should be specific entities, not partial actions.
-   - Keep specific details like names, places (be as complete as possible when specifying a place), dates, foods, etc.
+   - Keep specific details like names, places (be as complete as possible when specifying a place), dates, foods, **and ANY instructional text (commands, numbered steps, code snippets). Do NOT paraphrase these—output them verbatim so keywords such as command names, flags, or step numbers remain searchable.**
    - Ignore conversational filler or emotional responses.
 
 3. **Complete Relationships & Topics**:
@@ -181,3 +182,25 @@ CHUNK M: DISCARD - Brief reason (e.g., Primarily a list of external bibliographi
 CHUNK P (This chunk is from the end of the document): DISCARD - Brief reason (e.g., Bibliography section at end of document; List of external links at end)
 
 {batch_texts}"""
+
+INSTRUCTION_TRIPLE_EXTRACTION_PROMPT = """Extract procedural instruction steps into knowledge triples.
+
+Input may be numbered steps, shell commands, or descriptive actions.  For EACH instruction step:
+1. Create a *step label* in the form `step-N` (N starts at 1 in appearance order).
+2. Emit a triple that links the step label to the full instruction text, preserving **verbatim wording** in the object.  Example:
+   {{ "subject": "step-1", "verb": "instruction", "object": "systemctl stop web", "source_text": "1) stop the web service using systemctl stop web" }}
+3. Also emit sequencing / relationship triples:
+      – `step-1` "precedes" `step-2`
+      – If an instruction can run concurrently with another, use `parallel_with`.
+4. Topics should cover concepts like ["Backup Procedures", "System Management"].  Keep them concise.
+
+Output JSON format:
+{{
+  "triples": [
+    {{ "subject": "...", "verb": "...", "object": "...", "source_text": "...", "topics": [...] }}
+    // ... more triples
+  ]
+}}
+
+Text to analyze:
+{text}"""
