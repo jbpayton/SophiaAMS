@@ -163,3 +163,7 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+.claude/settings.local.json
+VectorKnowledgeGraphData/qdrant_data/.lock
+VectorKnowledgeGraphData/qdrant_data/meta.json
+VectorKnowledgeGraphData/qdrant_data/collection/knowledge_graph/storage.sqlite

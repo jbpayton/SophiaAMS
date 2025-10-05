@@ -5,7 +5,7 @@ sentence-transformers>=2.2.2
 qdrant-client>=1.7.0
 networkx>=3.1
 matplotlib>=3.7.1
-numpy==1.26.4
+numpy>=1.26.0
 tinydb>=4.8.0
 beautifulsoup4==4.12.3
 requests==2.31.0

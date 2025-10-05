@@ -1,0 +1,7 @@
+{
+  "messages": [
+    {"role": "user", "content": "Hello, how are you?"},
+    {"role": "assistant", "content": "I am doing well, thank you for asking!"}
+  ],
+  "session_id": "test-123"
+}
