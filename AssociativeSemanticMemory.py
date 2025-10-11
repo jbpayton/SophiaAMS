@@ -173,10 +173,10 @@ class AssociativeSemanticMemory:
         text: str,
         entity_name: Optional[str] = None,
         speaker: Optional[str] = None,
-        limit: int = 10,
-        min_confidence: Optional[float] = 0.6,
+        limit: int = 20,  # Increased from 10
+        min_confidence: Optional[float] = 0.5,  # Lowered from 0.6 to get more results
         include_summary_triples: bool = True,
-        hop_depth: int = 0,
+        hop_depth: int = 1,  # Changed from 0 to enable graph traversal
         return_summary: bool = True,
         include_triples: bool = True
     ) -> Any:
@@ -214,7 +214,7 @@ class AssociativeSemanticMemory:
             vec_results = self.kgraph.find_triples_by_text_similarity(
                 query_text=text,
                 return_metadata=True,
-                similarity_threshold=0.2,
+                similarity_threshold=0.3,  # Raised from 0.2 to reduce false matches
                 limit=max(50, limit*5)
             )
         except Exception as e:
@@ -229,7 +229,7 @@ class AssociativeSemanticMemory:
                 topic_results = self.kgraph.find_triples_by_vectorized_topics(
                     query_topics=topics,
                     return_metadata=True,
-                    similarity_threshold=0.2,
+                    similarity_threshold=0.3,  # Raised from 0.2 to reduce false matches
                     limit=max(50, limit*5)
                 )
                 # Give a small boost to mark topic-channel origin
@@ -289,12 +289,16 @@ class AssociativeSemanticMemory:
         # Sort by confidence descending
         filtered.sort(key=lambda x: x[1].get('confidence', 0.0), reverse=True)
 
-        # Elastic cut-off
-        guarantee_k = max(1, min(limit, 5))
+        # Elastic cut-off - guarantee at least some results even if below threshold
+        guarantee_k = max(3, min(limit // 2, 10))  # Guarantee 3-10 results depending on limit
         if min_confidence is not None and min_confidence >= 0:
             above = [r for r in filtered if r[1].get('confidence', 0.0) >= min_confidence]
             if len(above) >= guarantee_k:
                 filtered = above
+            # If we have very few above threshold, include some below to reach guarantee_k
+            elif len(above) > 0:
+                below = [r for r in filtered if r[1].get('confidence', 0.0) < min_confidence]
+                filtered = above + below[:max(0, guarantee_k - len(above))]
         filtered = filtered[:limit] if limit else filtered
 
         logging.info(f"[ASM] Returning {len(filtered)} triples (limit={limit}) after blending & filtering")

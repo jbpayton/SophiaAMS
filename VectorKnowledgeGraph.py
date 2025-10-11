@@ -541,6 +541,50 @@ class VectorKnowledgeGraph:
         logging.info(f"Found {len(found_triples)} triples matching topic tags: {valid_topics_to_match}")
         return found_triples
 
+    def compute_entity_similarities(self, entities: List[str], similarity_threshold: float = 0.6) -> List[Tuple[str, str, float]]:
+        """
+        Compute pairwise semantic similarities between entities based on their embeddings.
+
+        This is the core method that reveals the self-assembling nature of the graph -
+        entities can stand in for each other based on embedding similarity, not just explicit links.
+
+        Args:
+            entities: List of entity strings to compare
+            similarity_threshold: Minimum cosine similarity to include in results
+
+        Returns:
+            List of (entity1, entity2, similarity_score) tuples for pairs above threshold
+        """
+        logging.info(f"Computing semantic similarities between {len(entities)} entities")
+
+        if len(entities) < 2:
+            logging.warning("Need at least 2 entities to compute similarities")
+            return []
+
+        # Generate embeddings for all entities
+        entity_embeddings = self.embedding_model.encode(entities)
+
+        # Compute pairwise cosine similarities
+        from numpy import dot
+        from numpy.linalg import norm
+
+        def cosine_similarity(a, b):
+            return float(dot(a, b) / (norm(a) * norm(b) + 1e-12))
+
+        similarities = []
+        for i in range(len(entities)):
+            for j in range(i + 1, len(entities)):  # Only upper triangle to avoid duplicates
+                sim_score = cosine_similarity(entity_embeddings[i], entity_embeddings[j])
+
+                if sim_score >= similarity_threshold:
+                    similarities.append((entities[i], entities[j], sim_score))
+
+        # Sort by similarity descending
+        similarities.sort(key=lambda x: x[2], reverse=True)
+
+        logging.info(f"Found {len(similarities)} entity pairs with similarity >= {similarity_threshold}")
+        return similarities
+
     def save(self, path=""):
         """Save is now handled automatically by Qdrant's local storage"""
         logging.debug("Save operation not needed (handled by Qdrant)")

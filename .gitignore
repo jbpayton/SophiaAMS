@@ -167,3 +167,20 @@ cython_debug/
 VectorKnowledgeGraphData/qdrant_data/.lock
 VectorKnowledgeGraphData/qdrant_data/meta.json
 VectorKnowledgeGraphData/qdrant_data/collection/knowledge_graph/storage.sqlite
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Vite build output
+dist/
+dist-ssr/
+*.local
+
+# OS files
+nul
+.DS_Store
+Thumbs.db

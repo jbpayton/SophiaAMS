@@ -33,8 +33,17 @@ try:
 
     # Server-side conversation buffers
     conversation_buffers = {}  # session_id -> list of messages
-    BUFFER_SIZE = 5  # Process every N messages
-    MIN_BUFFER_TIME = 30  # Or every 30 seconds
+
+    # Configuration settings (can be modified via API)
+    config = {
+        "buffer_size": 5,  # Process every N messages
+        "min_buffer_time": 30,  # Or every 30 seconds (in seconds)
+        "database_path": "./VectorKnowledgeGraphData"  # Default database path
+    }
+
+    # Legacy constants for backwards compatibility
+    BUFFER_SIZE = config["buffer_size"]
+    MIN_BUFFER_TIME = config["min_buffer_time"]
 
     logger.info("SophiaAMS initialized successfully")
 except Exception as e:
@@ -64,6 +73,8 @@ class QueryRequest(BaseModel):
     limit: Optional[int] = 10
     session_id: Optional[str] = None
     return_summary: Optional[bool] = True
+    semantic_threshold: Optional[float] = 0.7  # For semantic graph visualization
+    hops: Optional[int] = 1  # Number of hops to expand from initial results
 
 class AssociativeRequest(BaseModel):
     text: str
@@ -93,7 +104,7 @@ def should_process_buffer(session_id: str, force: bool = False) -> bool:
     message_count = len(buffer_info["messages"])
     time_since_last = time.time() - buffer_info["last_updated"]
 
-    return message_count >= BUFFER_SIZE or time_since_last >= MIN_BUFFER_TIME
+    return message_count >= config["buffer_size"] or time_since_last >= config["min_buffer_time"]
 
 def process_conversation_buffer(session_id: str, speaker_names: Dict[str, str] = None):
     """Process and clear a conversation buffer."""
@@ -267,6 +278,10 @@ async def generate_llm_response(request: LLMGenerationRequest):
 async def ingest_document(request: DocumentIngest):
     """Ingest a document or text content."""
     try:
+        # Validate document is not empty
+        if not request.text or not request.text.strip():
+            raise HTTPException(status_code=400, detail="Document text cannot be empty")
+
         # Use existing document ingestion with simple parameters
         result = memory.ingest_text(
             text=request.text,
@@ -281,6 +296,8 @@ async def ingest_document(request: DocumentIngest):
             "text_length": len(request.text),
             "processing_result": result
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error ingesting document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -346,6 +363,305 @@ async def explore_topics(top_k: int = 10, per_topic: int = 4):
         logger.error(f"Error exploring topics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/query/with_topics")
+async def query_with_topic_structure(request: QueryRequest):
+    """
+    Enhanced query that returns both direct triple relationships AND topic-based clustering.
+    This enables visualization of the dual-linkage structure.
+    """
+    try:
+        # Get regular query results
+        result = memory.query_related_information(
+            text=request.text,
+            limit=request.limit,
+            return_summary=False
+        )
+
+        if not result or not isinstance(result, list):
+            return {
+                "query": request.text,
+                "triples": [],
+                "topics": {},
+                "topic_graph": {"nodes": [], "links": []}
+            }
+
+        # Extract all unique topics and build topic->triple mapping
+        topic_map = {}
+        all_triples = []
+
+        for triple_data in result:
+            if isinstance(triple_data, (list, tuple)) and len(triple_data) >= 2:
+                triple, metadata = triple_data
+                all_triples.append((triple, metadata))
+
+                # Extract topics from this triple
+                topics = metadata.get('topics', [])
+                for topic in topics:
+                    if topic not in topic_map:
+                        topic_map[topic] = []
+                    topic_map[topic].append({
+                        'triple': triple,
+                        'confidence': metadata.get('confidence', 0)
+                    })
+
+        # Build enhanced graph structure with topic nodes
+        entity_nodes = {}
+        topic_nodes = {}
+        triple_edges = []
+        topic_edges = []
+
+        # Create entity nodes and triple edges
+        for triple, metadata in all_triples:
+            subject, predicate, obj = triple
+
+            # Add entity nodes
+            if subject not in entity_nodes:
+                entity_nodes[subject] = {
+                    'id': f'entity:{subject}',
+                    'label': subject,
+                    'type': 'entity',
+                    'appearances': 0
+                }
+            entity_nodes[subject]['appearances'] += 1
+
+            if obj not in entity_nodes:
+                entity_nodes[obj] = {
+                    'id': f'entity:{obj}',
+                    'label': obj,
+                    'type': 'entity',
+                    'appearances': 0
+                }
+            entity_nodes[obj]['appearances'] += 1
+
+            # Add triple edge
+            triple_edges.append({
+                'source': f'entity:{subject}',
+                'target': f'entity:{obj}',
+                'label': predicate,
+                'type': 'triple',
+                'confidence': metadata.get('confidence', 0),
+                'topics': metadata.get('topics', [])
+            })
+
+        # Create topic nodes and topic edges
+        for topic, triples in topic_map.items():
+            topic_id = f'topic:{topic}'
+            topic_nodes[topic] = {
+                'id': topic_id,
+                'label': topic,
+                'type': 'topic',
+                'triple_count': len(triples)
+            }
+
+            # Create edges from entities to topics
+            for triple_info in triples:
+                triple = triple_info['triple']
+                subject, predicate, obj = triple
+
+                # Link subject to topic
+                topic_edges.append({
+                    'source': f'entity:{subject}',
+                    'target': topic_id,
+                    'label': 'belongs_to_topic',
+                    'type': 'topic_link',
+                    'confidence': triple_info['confidence']
+                })
+
+                # Link object to topic
+                topic_edges.append({
+                    'source': f'entity:{obj}',
+                    'target': topic_id,
+                    'label': 'belongs_to_topic',
+                    'type': 'topic_link',
+                    'confidence': triple_info['confidence']
+                })
+
+        return {
+            "query": request.text,
+            "triples": all_triples,
+            "topics": topic_map,
+            "topic_graph": {
+                "nodes": list(entity_nodes.values()) + list(topic_nodes.values()),
+                "links": triple_edges + topic_edges
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error in topic-enhanced query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/query/semantic_graph")
+async def query_semantic_graph(request: QueryRequest):
+    """
+    Query that returns a SEMANTIC SIMILARITY GRAPH where edges represent embedding-based
+    relationships, not just explicit triples. This reveals the self-assembling nature of
+    the knowledge graph.
+
+    The primary structure is semantic proximity in vector space. Explicit triples are
+    included as metadata but are NOT the primary connection mechanism.
+    """
+    try:
+        # Get query results
+        result = memory.query_related_information(
+            text=request.text,
+            limit=request.limit,
+            return_summary=False
+        )
+
+        if not result or not isinstance(result, list):
+            return {
+                "query": request.text,
+                "nodes": [],
+                "semantic_edges": [],
+                "explicit_triples": [],
+                "topics": {}
+            }
+
+        # Extract all unique entities and build metadata
+        entity_data = {}  # entity -> {confidence, topics, appearances}
+        explicit_triples = []
+        topic_map = {}
+        seen_triple_keys = set()  # Track unique triples to avoid duplicates
+
+        def add_triple_data(triple_data_item, base_confidence_multiplier=1.0):
+            """Helper to add triple data with deduplication"""
+            if isinstance(triple_data_item, (list, tuple)) and len(triple_data_item) >= 2:
+                triple, metadata = triple_data_item
+                subject, predicate, obj = triple
+
+                # Create unique key for deduplication
+                triple_key = (subject, predicate, obj)
+                if triple_key in seen_triple_keys:
+                    return  # Skip duplicates
+                seen_triple_keys.add(triple_key)
+
+                confidence = metadata.get('confidence', 0) * base_confidence_multiplier
+                topics = metadata.get('topics', [])
+
+                # Track entities
+                for entity in [subject, obj]:
+                    if entity not in entity_data:
+                        entity_data[entity] = {
+                            'max_confidence': confidence,
+                            'topics': set(),
+                            'appearances': 0
+                        }
+                    else:
+                        entity_data[entity]['max_confidence'] = max(
+                            entity_data[entity]['max_confidence'],
+                            confidence
+                        )
+
+                    entity_data[entity]['appearances'] += 1
+                    entity_data[entity]['topics'].update(topics)
+
+                # Store explicit triple
+                explicit_triples.append({
+                    'subject': subject,
+                    'predicate': predicate,
+                    'object': obj,
+                    'confidence': confidence,
+                    'topics': topics
+                })
+
+                # Track topics
+                for topic in topics:
+                    if topic not in topic_map:
+                        topic_map[topic] = []
+                    topic_map[topic].append({
+                        'triple': triple,
+                        'confidence': confidence
+                    })
+
+        # Add initial query results
+        for triple_data in result:
+            add_triple_data(triple_data, 1.0)
+
+        # HOP EXPANSION: Find what the discovered entities connect to
+        num_hops = request.hops if request.hops is not None else 1
+        if num_hops > 0:
+            logger.info(f"Performing {num_hops} hop(s) expansion")
+
+            for hop in range(num_hops):
+                # Get current entities to expand from
+                current_entities = list(entity_data.keys())
+                confidence_decay = 0.8 ** (hop + 1)  # Decay confidence with each hop
+
+                logger.info(f"Hop {hop + 1}: Expanding from {len(current_entities)} entities")
+
+                # For each entity, find triples where it appears
+                for entity in current_entities:
+                    # Find triples where entity is the subject
+                    try:
+                        entity_triples = memory.kgraph.build_graph_from_noun(
+                            entity,
+                            similarity_threshold=0.7,
+                            depth=0,  # Don't do recursive traversal, we're controlling hops manually
+                            return_metadata=True
+                        )
+
+                        # Add these triples with decayed confidence
+                        for triple_with_meta in entity_triples:
+                            add_triple_data(triple_with_meta, confidence_decay)
+                    except Exception as e:
+                        logger.debug(f"Error expanding entity '{entity}': {e}")
+                        continue
+
+        # Get semantic similarity threshold from request (default 0.7)
+        # At 0.0: all entities connected, at 1.0: no connections
+        semantic_threshold = request.semantic_threshold if request.semantic_threshold is not None else 0.7
+
+        # Compute SEMANTIC SIMILARITIES between all entities
+        # This is the PRIMARY structure - not the explicit triples!
+        entities = list(entity_data.keys())
+        semantic_edges = memory.kgraph.compute_entity_similarities(
+            entities=entities,
+            similarity_threshold=semantic_threshold
+        )
+
+        # Build node list with semantic metadata
+        nodes = []
+        for entity, data in entity_data.items():
+            nodes.append({
+                'id': entity,
+                'label': entity,
+                'type': 'entity',
+                'confidence': data['max_confidence'],
+                'appearances': data['appearances'],
+                'topics': list(data['topics'])
+            })
+
+        # Build edge list - SEMANTIC EDGES ARE PRIMARY
+        edges = []
+        for entity1, entity2, similarity in semantic_edges:
+            edges.append({
+                'source': entity1,
+                'target': entity2,
+                'similarity': similarity,
+                'type': 'semantic',
+                'weight': similarity  # Higher similarity = stronger connection
+            })
+
+        return {
+            "query": request.text,
+            "nodes": nodes,
+            "semantic_edges": edges,  # PRIMARY: embedding-based connections
+            "explicit_triples": explicit_triples,  # SECONDARY: syntactic relationships
+            "topics": {topic: len(triples) for topic, triples in topic_map.items()},
+            "graph_summary": {
+                "total_entities": len(nodes),
+                "semantic_connections": len(edges),
+                "explicit_triples": len(explicit_triples),
+                "semantic_threshold": semantic_threshold,
+                "hops": num_hops,
+                "message": f"Semantic edges show embedding similarity. Graph expanded {num_hops} hop(s) from initial query results."
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error in semantic graph query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/explore/entities")
 async def explore_entities(top_k: int = 10):
     """Get most connected entities in the knowledge graph."""
@@ -395,10 +711,61 @@ async def get_stats():
         triples = memory.kgraph.get_all_triples()
         return {
             "total_triples": len(triples),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "active_sessions": len(conversation_buffers)
         }
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Configuration endpoints
+@app.get("/config")
+async def get_config():
+    """Get current server configuration."""
+    return {
+        "config": config,
+        "active_sessions": len(conversation_buffers)
+    }
+
+class ConfigUpdate(BaseModel):
+    buffer_size: Optional[int] = None
+    min_buffer_time: Optional[int] = None
+    database_path: Optional[str] = None
+
+@app.post("/config")
+async def update_config(updates: ConfigUpdate):
+    """Update server configuration."""
+    try:
+        updated_fields = []
+
+        if updates.buffer_size is not None:
+            if updates.buffer_size < 1:
+                raise HTTPException(status_code=400, detail="buffer_size must be at least 1")
+            config["buffer_size"] = updates.buffer_size
+            updated_fields.append("buffer_size")
+
+        if updates.min_buffer_time is not None:
+            if updates.min_buffer_time < 1:
+                raise HTTPException(status_code=400, detail="min_buffer_time must be at least 1")
+            config["min_buffer_time"] = updates.min_buffer_time
+            updated_fields.append("min_buffer_time")
+
+        if updates.database_path is not None:
+            config["database_path"] = updates.database_path
+            updated_fields.append("database_path")
+            logger.info(f"Database path updated to: {updates.database_path}")
+            logger.warning("Note: Database path change requires server restart to take effect")
+
+        return {
+            "status": "success",
+            "message": f"Updated: {', '.join(updated_fields)}",
+            "config": config,
+            "note": "Database path changes require server restart"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

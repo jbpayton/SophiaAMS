@@ -1,0 +1,15 @@
+{
+  "name": "sophia-web",
+  "version": "1.0.0",
+  "description": "Modern web interface for SophiaAMS with real-time streaming and graph visualization",
+  "scripts": {
+    "setup": "cd server && npm install && cd ../client && npm install",
+    "start:server": "cd server && npm start",
+    "start:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "build:client": "cd client && npm run build"
+  },
+  "keywords": ["sophia", "ams", "knowledge-graph", "websocket", "react", "d3"],
+  "author": "",
+  "license": "MIT"
+}
