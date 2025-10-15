@@ -147,6 +147,21 @@ app.post('/api/ingest/document', async (req, res) => {
   }
 });
 
+app.post('/api/query/procedure', async (req, res) => {
+  try {
+    console.log('🔍 Procedure lookup request:', { goal: req.body.goal });
+    const response = await axios.post(`${PYTHON_API}/query/procedure`, req.body);
+    console.log('✅ Procedure lookup successful:', {
+      methods: response.data.procedures?.methods?.length || 0,
+      alternatives: response.data.procedures?.alternatives?.length || 0
+    });
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Procedure lookup failed:', error.message);
+    res.status(500).json({ error: error.message, details: error.response?.data });
+  }
+});
+
 app.get('/api/conversation/buffer/:sessionId', async (req, res) => {
   try {
     const response = await axios.get(`${PYTHON_API}/conversation/buffer/${req.params.sessionId}`);
@@ -260,7 +275,7 @@ async function handleChatMessage(ws, sessionId, data) {
     }
   }
 
-  // Step 3: Generate LLM response
+  // Step 3: Generate LLM response (with tool support)
   ws.send(JSON.stringify({
     type: 'status',
     message: 'Generating response...'
@@ -271,7 +286,7 @@ async function handleChatMessage(ws, sessionId, data) {
     const llmMessages = [
       {
         role: 'system',
-        content: 'You are a helpful AI assistant with a reliable memory system. You have access to retrieved memories from previous conversations.\n\nCRITICAL RULES:\n1. ONLY use facts that are explicitly stated in the "Retrieved Memories" section below\n2. If information is NOT in your retrieved memories, you must say "I don\'t have that information in my memory" or similar\n3. NEVER echo, confirm, or assume information from the user\'s question unless it appears in your retrieved memories\n4. When you do recall information, reference it naturally without announcing that you\'re retrieving memories\n5. If the user asks about something not in your memories, do NOT make up details or combine facts'
+        content: 'You are a helpful AI assistant with a reliable memory system and procedural knowledge lookup capability.\n\nMEMORY SYSTEM:\n- You have access to retrieved factual memories from previous conversations\n- ONLY use facts that are explicitly stated in the "Retrieved Memories" section\n- If information is NOT in your retrieved memories, you must say so\n- NEVER echo, confirm, or assume information unless it appears in your memories\n\nPROCEDURAL KNOWLEDGE TOOL:\n- You have access to a "lookup_procedure" tool to retrieve learned methods and instructions\n- Use this tool when you need to know HOW to accomplish a task (e.g., "how to send API request", "how to deploy code")\n- Use it during PLANNING when figuring out how to implement something\n- The tool returns: methods, alternatives, dependencies, and code examples\n- Combine multiple procedure lookups to build complex solutions\n\nWhen to use lookup_procedure:\n- User asks you to implement or build something\n- You need to know a specific method or technique\n- You\'re planning multi-step procedures\n- You want to check if there are alternative approaches\n\nDo NOT use lookup_procedure for:\n- Simple factual questions (use retrieved memories instead)\n- General knowledge or explanations'
       }
     ];
 
@@ -295,17 +310,125 @@ async function handleChatMessage(ws, sessionId, data) {
       content: message
     });
 
-    // Call LLM directly
-    console.log(`[${sessionId}] Calling LLM...`);
-    const completion = await llmClient.chat.completions.create({
+    // Define tools available to the LLM
+    const tools = [{
+      type: "function",
+      function: {
+        name: "lookup_procedure",
+        description: "Retrieve learned procedures and methods for accomplishing tasks. Use when planning how to implement something you've been taught. Returns methods, alternatives, dependencies, and examples.",
+        parameters: {
+          type: "object",
+          properties: {
+            goal: {
+              type: "string",
+              description: "The task or goal to accomplish (e.g., 'send POST request', 'deploy application', 'schedule recurring tasks')"
+            }
+          },
+          required: ["goal"]
+        }
+      }
+    }];
+
+    // Call LLM with tools enabled
+    console.log(`[${sessionId}] Calling LLM with tool support...`);
+    let completion = await llmClient.chat.completions.create({
       model: LLM_MODEL,
       messages: llmMessages,
+      tools: tools,
+      tool_choice: "auto",  // LLM decides when to use tools
       temperature: 0.7,
-      max_tokens: 400
+      max_tokens: 800
     });
 
-    const assistantMessage = completion.choices[0].message.content;
-    console.log(`[${sessionId}] LLM response received:`, assistantMessage.substring(0, 50) + '...');
+    let assistantMessage = completion.choices[0].message;
+
+    // Handle tool calls if the LLM requested them
+    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      console.log(`[${sessionId}] LLM requested ${assistantMessage.tool_calls.length} tool call(s)`);
+
+      // Add the assistant's message with tool calls to history
+      llmMessages.push(assistantMessage);
+
+      // Execute each tool call
+      for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.function.name === 'lookup_procedure') {
+          const args = JSON.parse(toolCall.function.arguments);
+          console.log(`[${sessionId}] Looking up procedure: ${args.goal}`);
+
+          // Notify user via WebSocket
+          ws.send(JSON.stringify({
+            type: 'tool_use',
+            tool: 'lookup_procedure',
+            goal: args.goal
+          }));
+
+          try {
+            // Call our procedure lookup endpoint
+            const procResponse = await axios.post(`http://localhost:${PORT}/api/query/procedure`, {
+              goal: args.goal,
+              include_alternatives: true,
+              include_examples: true,
+              include_dependencies: true,
+              limit: 10
+            });
+
+            // Format procedure results for LLM
+            const procedures = procResponse.data.procedures;
+            const formattedResult = {
+              goal: args.goal,
+              methods: procedures.methods?.map(([triple, meta]) => ({
+                method: triple[2],
+                relationship: triple[1],
+                confidence: meta.confidence
+              })),
+              alternatives: procedures.alternatives?.map(([triple, meta]) => ({
+                method: triple[2],
+                confidence: meta.confidence
+              })),
+              dependencies: procedures.dependencies?.map(([triple, meta]) => ({
+                requires: triple[2],
+                confidence: meta.confidence
+              })),
+              examples: procedures.examples?.map(([triple, meta]) => ({
+                example: triple[2],
+                confidence: meta.confidence
+              }))
+            };
+
+            // Add tool response to messages
+            llmMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(formattedResult, null, 2)
+            });
+
+            console.log(`[${sessionId}] Procedure lookup completed: ${procedures.total_found} results`);
+          } catch (error) {
+            console.error(`[${sessionId}] Procedure lookup failed:`, error.message);
+            llmMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ error: "Procedure lookup failed" })
+            });
+          }
+        }
+      }
+
+      // Call LLM again with tool results
+      console.log(`[${sessionId}] Calling LLM with tool results...`);
+      completion = await llmClient.chat.completions.create({
+        model: LLM_MODEL,
+        messages: llmMessages,
+        temperature: 0.7,
+        max_tokens: 800
+      });
+
+      assistantMessage = completion.choices[0].message.content;
+    } else {
+      assistantMessage = assistantMessage.content;
+    }
+
+    console.log(`[${sessionId}] Final LLM response received:`, assistantMessage?.substring(0, 50) + '...');
 
     // Send assistant response
     ws.send(JSON.stringify({

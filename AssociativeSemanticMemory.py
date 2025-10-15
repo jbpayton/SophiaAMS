@@ -428,6 +428,173 @@ If one fact clearly and directly answers the input text, **include that fact ver
         content = response.choices[0].message.content
         return content if content is not None else "Unable to generate summary."
 
+    def query_procedure(
+        self,
+        goal: str,
+        include_alternatives: bool = True,
+        include_examples: bool = True,
+        include_dependencies: bool = True,
+        limit: int = 20
+    ) -> Dict:
+        """
+        Query for procedural knowledge to accomplish a goal.
+
+        Args:
+            goal: The task/goal to accomplish (e.g., "send POST request")
+            include_alternatives: Whether to include alternative methods
+            include_examples: Whether to include example_usage triples
+            include_dependencies: Whether to follow requires/requires_prior chains
+            limit: Maximum number of primary results
+
+        Returns:
+            Dict with procedures, alternatives, dependencies, and examples
+        """
+        logging.info(f"[ASM] Querying procedures for goal: '{goal}'")
+
+        # Define procedural predicates with priority weights
+        procedural_predicates = {
+            "accomplished_by": 2.0,      # Highest priority - direct methods
+            "is_method_for": 1.8,         # Methods for purposes
+            "alternatively_by": 1.5,      # Alternatives
+            "requires": 1.3,              # Dependencies
+            "requires_prior": 1.3,        # Sequencing
+            "enables": 1.2,               # Capabilities
+            "example_usage": 1.5,         # Examples
+            "has_step": 1.4,              # Procedural steps
+            "followed_by": 1.2            # Sequential steps
+        }
+
+        # Step 1: Search for procedures related to the goal
+        combined: Dict[Tuple[str, str, str], Dict] = {}
+
+        # Vector similarity search
+        try:
+            vec_results = self.kgraph.find_triples_by_text_similarity(
+                query_text=goal,
+                return_metadata=True,
+                similarity_threshold=0.3,
+                limit=max(50, limit * 3)
+            )
+        except Exception as e:
+            logging.error(f"Error during text similarity search: {e}")
+            vec_results = []
+
+        # Filter for procedural triples and boost by predicate
+        for triple, meta in vec_results:
+            key = tuple(triple)
+            verb = (triple[1] or '').lower()
+
+            # Check if it's a procedural triple
+            topics = meta.get('topics', [])
+            is_procedural = "procedure" in topics or verb in procedural_predicates
+
+            if is_procedural:
+                # Apply predicate boost
+                boost = procedural_predicates.get(verb, 1.0)
+                meta['confidence'] = meta.get('confidence', 0.0) * boost
+                meta['is_procedural'] = True
+                combined[key] = meta
+
+        # Step 2: Topic-based search for procedural topics
+        topics = ["procedure", "method", "how-to", "usage", "implementation"]
+        topics.extend(self._extract_candidate_topics(goal, max_topics=3))
+
+        try:
+            topic_results = self.kgraph.find_triples_by_vectorized_topics(
+                query_topics=topics,
+                return_metadata=True,
+                similarity_threshold=0.3,
+                limit=max(50, limit * 3)
+            )
+
+            for triple, meta in topic_results:
+                key = tuple(triple)
+                verb = (triple[1] or '').lower()
+
+                # Filter for procedural
+                topic_list = meta.get('topics', [])
+                if "procedure" in topic_list or verb in procedural_predicates:
+                    boost = procedural_predicates.get(verb, 1.0)
+                    meta['confidence'] = meta.get('confidence', 0.0) * boost * 1.05
+                    meta['is_procedural'] = True
+
+                    if key not in combined or meta['confidence'] > combined[key].get('confidence', 0):
+                        combined[key] = meta
+
+        except Exception as e:
+            logging.error(f"Error during topic similarity search: {e}")
+
+        # Step 3: Organize by predicate type
+        methods = []
+        alternatives = []
+        dependencies = []
+        examples = []
+        steps = []
+
+        for triple_key, meta in combined.items():
+            verb = triple_key[1].lower() if triple_key[1] else ""
+            triple_with_meta = (list(triple_key), meta)
+
+            if verb == "accomplished_by" or verb == "is_method_for":
+                methods.append(triple_with_meta)
+            elif verb == "alternatively_by":
+                alternatives.append(triple_with_meta)
+            elif verb in ["requires", "requires_prior"]:
+                dependencies.append(triple_with_meta)
+            elif verb == "example_usage":
+                examples.append(triple_with_meta)
+            elif verb in ["has_step", "followed_by"]:
+                steps.append(triple_with_meta)
+            else:
+                methods.append(triple_with_meta)  # Default to methods
+
+        # Sort each category by confidence
+        methods.sort(key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+        alternatives.sort(key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+        dependencies.sort(key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+        examples.sort(key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+        steps.sort(key=lambda x: x[1].get('confidence', 0.0), reverse=True)
+
+        # Step 4: Follow dependency chains if requested
+        if include_dependencies and (methods or alternatives):
+            # For top methods, find their dependencies
+            for method_triple, _ in methods[:3]:  # Top 3 methods
+                method_obj = method_triple[2]  # The method itself
+
+                try:
+                    # Find what this method requires
+                    dep_results = self.kgraph.build_graph_from_subject_relationship(
+                        (method_obj, "requires"),
+                        similarity_threshold=0.7,
+                        max_results=10,
+                        return_metadata=True
+                    )
+
+                    for dep_triple, dep_meta in dep_results:
+                        dep_key = tuple(dep_triple)
+                        if dep_key not in combined:
+                            dep_meta['confidence'] = dep_meta.get('confidence', 0.0) * 0.8
+                            dependencies.append((list(dep_triple), dep_meta))
+
+                except Exception as e:
+                    logging.debug(f"Dependency search failed for {method_obj}: {e}")
+
+        # Step 5: Build structured result
+        result = {
+            "goal": goal,
+            "methods": methods[:limit] if methods else [],
+            "alternatives": alternatives[:limit] if include_alternatives and alternatives else [],
+            "dependencies": dependencies[:limit] if include_dependencies and dependencies else [],
+            "examples": examples[:limit] if include_examples and examples else [],
+            "steps": steps[:limit] if steps else [],
+            "total_found": len(methods) + len(alternatives) + len(dependencies) + len(examples) + len(steps)
+        }
+
+        logging.info(f"[ASM] Found procedures: {len(methods)} methods, {len(alternatives)} alternatives, "
+                    f"{len(dependencies)} dependencies, {len(examples)} examples")
+
+        return result
+
     def get_explorer(self):
         """Return a MemoryExplorer bound to the current knowledge graph."""
         from MemoryExplorer import MemoryExplorer  # local import to avoid circular dependency

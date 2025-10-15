@@ -81,6 +81,20 @@ function ChatPage() {
           setCurrentStatus('')
           break
 
+        case 'tool_use':
+          // Show that the assistant is looking up procedures
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now(),
+              role: 'tool',
+              tool: msg.tool,
+              goal: msg.goal,
+              timestamp: new Date().toISOString()
+            }
+          ])
+          break
+
         case 'conversation_saved':
           // Optionally show a subtle indicator
           break
@@ -311,6 +325,17 @@ function ChatPage() {
                     </ul>
                   </details>
                 )}
+              </div>
+            )
+          }
+
+          if (msg.role === 'tool') {
+            return (
+              <div key={msg.id} className="message tool-message">
+                <div className="tool-header">
+                  <Settings2 size={16} />
+                  <span>Looking up procedure: {msg.goal}</span>
+                </div>
               </div>
             )
           }

@@ -81,6 +81,13 @@ class AssociativeRequest(BaseModel):
     limit: Optional[int] = 10
     hops: Optional[int] = 2
 
+class ProcedureRequest(BaseModel):
+    goal: str
+    include_alternatives: Optional[bool] = True
+    include_examples: Optional[bool] = True
+    include_dependencies: Optional[bool] = True
+    limit: Optional[int] = 20
+
 class LLMGenerationRequest(BaseModel):
     messages: List[Dict[str, str]]
     temperature: Optional[float] = 0.7
@@ -344,6 +351,29 @@ async def get_associative_content(request: AssociativeRequest):
         }
     except Exception as e:
         logger.error(f"Error getting associative content: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/query/procedure")
+async def lookup_procedure(request: ProcedureRequest):
+    """
+    Query for procedural knowledge to accomplish a goal.
+    Returns methods, alternatives, dependencies, examples, and steps organized hierarchically.
+    """
+    try:
+        result = memory.query_procedure(
+            goal=request.goal,
+            include_alternatives=request.include_alternatives,
+            include_examples=request.include_examples,
+            include_dependencies=request.include_dependencies,
+            limit=request.limit
+        )
+
+        return {
+            "goal": request.goal,
+            "procedures": result
+        }
+    except Exception as e:
+        logger.error(f"Error querying procedures: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Exploration endpoints

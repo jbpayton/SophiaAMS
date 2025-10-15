@@ -4,7 +4,8 @@ import time
 from typing import Dict, List, Optional, Union
 from openai import OpenAI
 from dotenv import load_dotenv
-from prompts import TRIPLE_EXTRACTION_PROMPT, CONVERSATION_TRIPLE_EXTRACTION_PROMPT, QUERY_EXTRACTION_PROMPT
+from prompts import (TRIPLE_EXTRACTION_PROMPT, CONVERSATION_TRIPLE_EXTRACTION_PROMPT,
+                      QUERY_EXTRACTION_PROMPT, PROCEDURAL_KNOWLEDGE_EXTRACTION_PROMPT)
 from schemas import TRIPLE_EXTRACTION_SCHEMA
 
 # Load environment variables
@@ -65,13 +66,42 @@ def extract_triples_from_string(
     elif is_query:
         prompt = QUERY_EXTRACTION_PROMPT.format(text=text_to_extract)
     else:
-        # Detect procedural instruction style (numbered steps or back-ticks / shell commands)
+        # Detect procedural knowledge patterns (how-to instructions, methods, etc.)
+        text_lower = text_to_extract.lower()
+
+        # Strong procedural indicators (high weight)
+        strong_indicators = [
+            'to send', 'to use', 'to install', 'to deploy', 'to build', 'to run',
+            'you can use', 'you need to', 'you should use',
+            'how to', 'steps to', 'method for',
+            'example:', 'for example:', 'for instance:',
+            'first,', 'then,', 'next,', 'finally,',
+            'alternatively,', 'instead of',
+        ]
+
+        # Moderate indicators (medium weight)
+        moderate_indicators = [
+            'use requests', 'use pip', 'use npm', 'use docker',
+            'install ', 'pip install', 'npm install',
+            'import ', 'from ', 'def ', 'function ',
+            ' requires ', ' requires_', 'required to',
+            '.post(', '.get(', '.put(', '.delete(',
+        ]
+
+        # Count indicators with weights
+        strong_score = sum(2 for indicator in strong_indicators if indicator in text_lower)
+        moderate_score = sum(1 for indicator in moderate_indicators if indicator in text_lower)
+        procedural_score = strong_score + moderate_score
+
+        # Detect step-based instruction style (numbered steps or shell commands)
         looks_like_instruction = any(
-            token in text_to_extract for token in ['`', '1)', '2)', 'systemctl', 'mkdir', 'backup_', 'deploy.sh']
+            token in text_to_extract for token in ['`', '1)', '2)', '1.', '2.', 'systemctl', 'mkdir', 'backup_', 'deploy.sh']
         )
-        if looks_like_instruction:
-            from prompts import INSTRUCTION_TRIPLE_EXTRACTION_PROMPT  # local import to avoid circular
-            prompt = INSTRUCTION_TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
+
+        # Use procedural prompt if enough indicators or clear instructional style
+        # Threshold: 5 (e.g., 2 strong + 1 moderate, or 5 moderate)
+        if procedural_score >= 5 or looks_like_instruction:
+            prompt = PROCEDURAL_KNOWLEDGE_EXTRACTION_PROMPT.format(text=text_to_extract)
         else:
             prompt = TRIPLE_EXTRACTION_PROMPT.format(text=text_to_extract)
     
@@ -126,11 +156,38 @@ def extract_triples_from_string(
             result = {"triples": []}
         
         timestamp = timestamp or time.time()
-        
-        # Add speaker to each triple if not already present from LLM
+
+        # Add speaker and procedural metadata to each triple if not already present from LLM
         for triple in result.get("triples", []):
             if "speaker" not in triple or triple["speaker"] is None:
                 triple["speaker"] = extracted_speaker
+
+            # Detect if this is a procedural triple and add metadata
+            topics = triple.get("topics", [])
+            verb = triple.get("verb", "").lower()
+
+            # Check if using procedural predicates
+            procedural_verbs = [
+                "accomplished_by", "alternatively_by", "requires", "requires_prior",
+                "enables", "is_method_for", "example_usage", "has_step", "followed_by"
+            ]
+            is_procedural = verb in procedural_verbs or "procedure" in topics
+
+            if is_procedural:
+                # Ensure "procedure" is in topics
+                if "procedure" not in topics:
+                    topics.append("procedure")
+                    triple["topics"] = topics
+
+                # Add abstraction_level if not present
+                if "abstraction_level" not in triple:
+                    # Infer abstraction level from context
+                    if any(x in verb for x in ["example_usage", "import", "install"]):
+                        triple["abstraction_level"] = 1  # Atomic
+                    elif any(x in verb for x in ["accomplished_by", "requires", "enables"]):
+                        triple["abstraction_level"] = 2  # Basic procedure
+                    else:
+                        triple["abstraction_level"] = 3  # High-level task
             
             # For summary triples, try to infer speaker from the subject if not already set
             if source and "_summary" in source and not extracted_speaker:

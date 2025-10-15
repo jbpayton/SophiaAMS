@@ -204,3 +204,55 @@ Output JSON format:
 
 Text to analyze:
 {text}"""
+
+PROCEDURAL_KNOWLEDGE_EXTRACTION_PROMPT = """Extract procedural knowledge for teaching how to accomplish tasks. Detect HOW-TO instructions, methods, and their relationships.
+
+PROCEDURAL PREDICATES (use these exact verbs when appropriate):
+- "accomplished_by": For stating how to achieve a goal (e.g., "send POST request" accomplished_by "requests.post")
+- "alternatively_by": For stating alternative methods (e.g., "send HTTP request" alternatively_by "urllib.request")
+- "requires": For dependencies and prerequisites (e.g., "requests.post" requires "import requests")
+- "requires_prior": For sequencing requirements (e.g., "deploy code" requires_prior "run tests")
+- "enables": For capabilities provided (e.g., "requests library" enables "HTTP communication")
+- "is_method_for": For tool/method purposes (e.g., "requests.post" is_method_for "sending POST requests")
+- "example_usage": For code examples/usage patterns (preserve code verbatim)
+- "has_step": For procedural steps (e.g., "API workflow" has_step "authenticate first")
+- "followed_by": For sequential steps (e.g., "step 1" followed_by "step 2")
+
+DETECTION PATTERNS - Look for these phrases in the input:
+- "to [goal], use [method]" → (goal, accomplished_by, method)
+- "you can [goal] by [method]" → (goal, accomplished_by, method)
+- "[method] for [purpose]" → (method, is_method_for, purpose)
+- "instead of [X], use [Y]" → (goal, alternatively_by, Y)
+- "another way is [method]" → (goal, alternatively_by, method)
+- "[method] requires [dependency]" → (method, requires, dependency)
+- "you need [X] to [goal]" → (goal, requires, X)
+- "first [step1], then [step2]" → (step1, followed_by, step2)
+- "example:" or "for instance:" → next content is example_usage
+- "this enables [capability]" → (method, enables, capability)
+
+METADATA REQUIREMENTS:
+- Set abstraction_level: 1 (atomic commands/tools), 2 (basic procedures), 3 (high-level tasks)
+- Include topics relevant to the domain (e.g., ["Database Operations"], ["File Management"], ["Deployment"])
+- Mark with skill_type: "procedure" in topics
+
+CRITICAL: Extract goals, methods, and relationships - do NOT just paraphrase the text.
+Focus on WHAT is being taught (the procedure) and HOW to do it (the method).
+Preserve all code, commands, and examples EXACTLY as written.
+
+RULES:
+1. Preserve code examples VERBATIM - do not paraphrase
+2. Use procedural predicates when patterns match
+3. Include "procedure" in topics list
+4. Extract goals/methods/dependencies as distinct entities
+5. Capture alternatives explicitly with "alternatively_by"
+6. If no procedural patterns detected, fall back to standard triple extraction
+
+Output JSON format:
+{{
+  "triples": [
+    {{ "subject": "...", "verb": "procedural_predicate", "object": "...", "source_text": "...", "topics": [..., "procedure"] }}
+  ]
+}}
+
+Text to analyze:
+{text}"""
