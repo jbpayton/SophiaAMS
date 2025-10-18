@@ -19,6 +19,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 const PYTHON_API = process.env.PYTHON_API || 'http://localhost:8000';
+const AGENT_API = process.env.AGENT_API || 'http://localhost:5001';
 
 // Initialize OpenAI client with LLM config from .env
 const llmClient = new OpenAI({
@@ -35,7 +36,8 @@ app.use(express.json());
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`🐍 Python API: ${PYTHON_API}`);
-  console.log(`🤖 LLM: ${llmClient.baseURL} (${LLM_MODEL})`);
+  console.log(`🤖 Agent API: ${AGENT_API}`);
+  console.log(`🧠 LLM: ${llmClient.baseURL} (${LLM_MODEL})`);
 });
 
 // WebSocket Server
@@ -234,7 +236,6 @@ async function handleWebSocketMessage(ws, sessionId, message) {
 
 async function handleChatMessage(ws, sessionId, data) {
   const { message, autoRetrieve = true, userName = 'User', assistantName = 'Assistant' } = data;
-  const session = sessions.get(sessionId);
 
   console.log(`[${sessionId}] Chat message received from ${userName}:`, message);
 
@@ -245,190 +246,22 @@ async function handleChatMessage(ws, sessionId, data) {
     timestamp: new Date().toISOString()
   }));
 
-  // Step 2: Retrieve memories if enabled
-  let memoryContext = null;
-  if (autoRetrieve) {
-    ws.send(JSON.stringify({
-      type: 'status',
-      message: 'Retrieving memories...'
-    }));
-
-    try {
-      const queryResponse = await axios.post(`${PYTHON_API}/query`, {
-        text: message,
-        limit: 10,
-        session_id: sessionId,
-        return_summary: true
-      });
-
-      if (queryResponse.data && queryResponse.data.results) {
-        memoryContext = queryResponse.data.results;
-
-        ws.send(JSON.stringify({
-          type: 'memory_retrieved',
-          data: memoryContext,
-          timestamp: new Date().toISOString()
-        }));
-      }
-    } catch (error) {
-      console.error('Memory retrieval error:', error.message);
-    }
-  }
-
-  // Step 3: Generate LLM response (with tool support)
+  // Step 2: Forward to Python agent server
   ws.send(JSON.stringify({
     type: 'status',
-    message: 'Generating response...'
+    message: 'Thinking...'
   }));
 
   try {
-    // Build messages for LLM
-    const llmMessages = [
-      {
-        role: 'system',
-        content: 'You are a helpful AI assistant with a reliable memory system and procedural knowledge lookup capability.\n\nMEMORY SYSTEM:\n- You have access to retrieved factual memories from previous conversations\n- ONLY use facts that are explicitly stated in the "Retrieved Memories" section\n- If information is NOT in your retrieved memories, you must say so\n- NEVER echo, confirm, or assume information unless it appears in your memories\n\nPROCEDURAL KNOWLEDGE TOOL:\n- You have access to a "lookup_procedure" tool to retrieve learned methods and instructions\n- Use this tool when you need to know HOW to accomplish a task (e.g., "how to send API request", "how to deploy code")\n- Use it during PLANNING when figuring out how to implement something\n- The tool returns: methods, alternatives, dependencies, and code examples\n- Combine multiple procedure lookups to build complex solutions\n\nWhen to use lookup_procedure:\n- User asks you to implement or build something\n- You need to know a specific method or technique\n- You\'re planning multi-step procedures\n- You want to check if there are alternative approaches\n\nDo NOT use lookup_procedure for:\n- Simple factual questions (use retrieved memories instead)\n- General knowledge or explanations'
-      }
-    ];
-
-    // Add memory context if available
-    if (memoryContext && memoryContext.summary) {
-      console.log(`[${sessionId}] Including memory context in LLM prompt`);
-      llmMessages.push({
-        role: 'system',
-        content: `=== RETRIEVED MEMORIES ===\n${memoryContext.summary}\n=== END RETRIEVED MEMORIES ===\n\nIMPORTANT: The above section contains ALL the facts you remember. If something is not mentioned above, you do not remember it. Only use facts from this section.`
-      });
-    } else {
-      console.log(`[${sessionId}] No memory context available`);
-      llmMessages.push({
-        role: 'system',
-        content: '=== RETRIEVED MEMORIES ===\n(No relevant memories found for this query)\n=== END RETRIEVED MEMORIES ===\n\nYou have no prior knowledge about this topic. Respond helpfully but acknowledge you don\'t have specific memories about what the user is asking.'
-      });
-    }
-
-    llmMessages.push({
-      role: 'user',
+    // Call Python agent via HTTP (could also use WebSocket for streaming)
+    console.log(`[${sessionId}] Forwarding to Python agent at ${AGENT_API}`);
+    const agentResponse = await axios.post(`${AGENT_API}/chat/${sessionId}`, {
       content: message
     });
 
-    // Define tools available to the LLM
-    const tools = [{
-      type: "function",
-      function: {
-        name: "lookup_procedure",
-        description: "Retrieve learned procedures and methods for accomplishing tasks. Use when planning how to implement something you've been taught. Returns methods, alternatives, dependencies, and examples.",
-        parameters: {
-          type: "object",
-          properties: {
-            goal: {
-              type: "string",
-              description: "The task or goal to accomplish (e.g., 'send POST request', 'deploy application', 'schedule recurring tasks')"
-            }
-          },
-          required: ["goal"]
-        }
-      }
-    }];
+    const assistantMessage = agentResponse.data.response;
 
-    // Call LLM with tools enabled
-    console.log(`[${sessionId}] Calling LLM with tool support...`);
-    let completion = await llmClient.chat.completions.create({
-      model: LLM_MODEL,
-      messages: llmMessages,
-      tools: tools,
-      tool_choice: "auto",  // LLM decides when to use tools
-      temperature: 0.7,
-      max_tokens: 800
-    });
-
-    let assistantMessage = completion.choices[0].message;
-
-    // Handle tool calls if the LLM requested them
-    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-      console.log(`[${sessionId}] LLM requested ${assistantMessage.tool_calls.length} tool call(s)`);
-
-      // Add the assistant's message with tool calls to history
-      llmMessages.push(assistantMessage);
-
-      // Execute each tool call
-      for (const toolCall of assistantMessage.tool_calls) {
-        if (toolCall.function.name === 'lookup_procedure') {
-          const args = JSON.parse(toolCall.function.arguments);
-          console.log(`[${sessionId}] Looking up procedure: ${args.goal}`);
-
-          // Notify user via WebSocket
-          ws.send(JSON.stringify({
-            type: 'tool_use',
-            tool: 'lookup_procedure',
-            goal: args.goal
-          }));
-
-          try {
-            // Call our procedure lookup endpoint
-            const procResponse = await axios.post(`http://localhost:${PORT}/api/query/procedure`, {
-              goal: args.goal,
-              include_alternatives: true,
-              include_examples: true,
-              include_dependencies: true,
-              limit: 10
-            });
-
-            // Format procedure results for LLM
-            const procedures = procResponse.data.procedures;
-            const formattedResult = {
-              goal: args.goal,
-              methods: procedures.methods?.map(([triple, meta]) => ({
-                method: triple[2],
-                relationship: triple[1],
-                confidence: meta.confidence
-              })),
-              alternatives: procedures.alternatives?.map(([triple, meta]) => ({
-                method: triple[2],
-                confidence: meta.confidence
-              })),
-              dependencies: procedures.dependencies?.map(([triple, meta]) => ({
-                requires: triple[2],
-                confidence: meta.confidence
-              })),
-              examples: procedures.examples?.map(([triple, meta]) => ({
-                example: triple[2],
-                confidence: meta.confidence
-              }))
-            };
-
-            // Add tool response to messages
-            llmMessages.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              content: JSON.stringify(formattedResult, null, 2)
-            });
-
-            console.log(`[${sessionId}] Procedure lookup completed: ${procedures.total_found} results`);
-          } catch (error) {
-            console.error(`[${sessionId}] Procedure lookup failed:`, error.message);
-            llmMessages.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({ error: "Procedure lookup failed" })
-            });
-          }
-        }
-      }
-
-      // Call LLM again with tool results
-      console.log(`[${sessionId}] Calling LLM with tool results...`);
-      completion = await llmClient.chat.completions.create({
-        model: LLM_MODEL,
-        messages: llmMessages,
-        temperature: 0.7,
-        max_tokens: 800
-      });
-
-      assistantMessage = completion.choices[0].message.content;
-    } else {
-      assistantMessage = assistantMessage.content;
-    }
-
-    console.log(`[${sessionId}] Final LLM response received:`, assistantMessage?.substring(0, 50) + '...');
+    console.log(`[${sessionId}] Agent response received:`, assistantMessage?.substring(0, 50) + '...');
 
     // Send assistant response
     ws.send(JSON.stringify({
@@ -437,7 +270,7 @@ async function handleChatMessage(ws, sessionId, data) {
       timestamp: new Date().toISOString()
     }));
 
-    // Step 4: Ingest conversation (buffer for later processing)
+    // Step 3: Ingest conversation (buffer for later processing)
     console.log(`[${sessionId}] Adding conversation to buffer...`);
     const ingestResponse = await axios.post(`${PYTHON_API}/ingest/conversation`, {
       messages: [
@@ -473,10 +306,10 @@ async function handleChatMessage(ws, sessionId, data) {
     }));
 
   } catch (error) {
-    console.error('LLM generation error:', error.message);
+    console.error('Agent communication error:', error.message);
     ws.send(JSON.stringify({
       type: 'error',
-      error: 'Failed to generate response'
+      error: 'Failed to communicate with agent: ' + error.message
     }));
   }
 }

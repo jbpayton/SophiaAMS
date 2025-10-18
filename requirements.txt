@@ -15,4 +15,13 @@ trafilatura==2.0.0  # For web page content extraction
 spacy==3.7.4  # For natural language processing and sentence splitting
 # Note: After installing dependencies, run: python -m spacy download en_core_web_sm 
 scikit-learn>=1.4.2
-hdbscan>=0.8.33 
+hdbscan>=0.8.33
+
+# LangChain dependencies for agent server
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-community>=0.0.20
+langchain-experimental>=0.3.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+websockets>=12.0 
