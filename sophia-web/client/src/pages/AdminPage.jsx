@@ -7,7 +7,8 @@ import {
   RefreshCw,
   Tag,
   Users,
-  BarChart3
+  BarChart3,
+  Download
 } from 'lucide-react'
 import './AdminPage.css'
 
@@ -17,6 +18,7 @@ function AdminPage() {
   const [topics, setTopics] = useState([])
   const [entities, setEntities] = useState([])
   const [overview, setOverview] = useState(null)
+  const [allTriples, setAllTriples] = useState(null)
   const [loading, setLoading] = useState(false)
   const [uploadText, setUploadText] = useState('')
   const [uploadSource, setUploadSource] = useState('')
@@ -124,6 +126,33 @@ function AdminPage() {
       console.error('Failed to fetch overview:', error)
     }
     setLoading(false)
+  }
+
+  const fetchAllTriples = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/export/all_triples')
+      if (res.ok) {
+        const data = await res.json()
+        setAllTriples(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch all triples:', error)
+    }
+    setLoading(false)
+  }
+
+  const downloadTriples = () => {
+    if (!allTriples) return
+
+    const dataStr = JSON.stringify(allTriples, null, 2)
+    const dataBlob = new Blob([dataStr], { type: 'application/json' })
+    const url = URL.createObjectURL(dataBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `sophia_triples_${new Date().toISOString().split('T')[0]}.json`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleUpload = async () => {
@@ -288,6 +317,16 @@ function AdminPage() {
             <BarChart3 size={16} />
             Full Overview
           </button>
+          <button onClick={fetchAllTriples} disabled={loading}>
+            <Database size={16} />
+            View All Triples
+          </button>
+          {allTriples && (
+            <button onClick={downloadTriples} style={{ background: '#10b981' }}>
+              <Download size={16} />
+              Download JSON
+            </button>
+          )}
         </div>
       </div>
 
@@ -341,6 +380,25 @@ function AdminPage() {
           <h3>Knowledge Overview</h3>
           <pre className="overview-data">
             {JSON.stringify(overview, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {/* All Triples Display */}
+      {allTriples && (
+        <div className="data-section">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3>All Knowledge Triples ({allTriples.triple_count})</h3>
+            <button onClick={downloadTriples} style={{ background: '#10b981', padding: '8px 16px', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Download size={16} />
+              Download JSON
+            </button>
+          </div>
+          <p style={{ fontSize: '13px', color: '#888', marginBottom: '12px' }}>
+            Exported: {new Date(allTriples.export_time).toLocaleString()}
+          </p>
+          <pre className="overview-data" style={{ maxHeight: '500px', overflow: 'auto' }}>
+            {JSON.stringify(allTriples.triples, null, 2)}
           </pre>
         </div>
       )}

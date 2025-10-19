@@ -116,6 +116,15 @@ app.get('/api/explore/overview', async (req, res) => {
   }
 });
 
+app.get('/api/export/all_triples', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/export/all_triples`);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/query', async (req, res) => {
   try {
     const response = await axios.post(`${AGENT_API}/query`, req.body);

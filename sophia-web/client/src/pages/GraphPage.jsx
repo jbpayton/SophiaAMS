@@ -70,39 +70,84 @@ function GraphPage() {
   const hasLoadedInitialData = useRef(false)
 
   useEffect(() => {
-    if (!isConnected || hasLoadedInitialData.current || graphData.nodes.length > 0) return
+    if (hasLoadedInitialData.current || graphData.nodes.length > 0) return
 
     const loadInitialData = async () => {
       try {
-        // Try to get some initial data from the overview endpoint
-        const res = await fetch('/api/explore/overview')
+        setLoading(true)
+        // Load ALL triples as the initial graph view
+        const res = await fetch('/api/export/all_triples')
         if (res.ok) {
           const data = await res.json()
 
-          // If we have topics, use the first topic to visualize
-          if (data.topics && data.topics.length > 0) {
-            const firstTopic = data.topics[0]
-            setQuery(firstTopic.topic)
+          // Limit to first 100 triples to avoid overwhelming the browser
+          const maxTriples = 100
+          const triplesToShow = data.triples.slice(0, maxTriples)
 
-            // Trigger a graph request with the first topic
-            sendMessage({
-              type: 'graph',
-              data: {
-                query: firstTopic.topic,
-                limit: 30
-              }
+          // Transform triples into graph format
+          const nodes = new Map()
+          const links = []
+
+          triplesToShow.forEach((triple) => {
+            const subject = triple.subject
+            const predicate = triple.predicate
+            const object = triple.object
+            const metadata = triple.metadata || {}
+
+            // Skip triples with null/empty/undefined subject or object
+            if (!subject || !object || subject === '' || object === '') {
+              return
+            }
+
+            // Add entity nodes
+            if (!nodes.has(subject)) {
+              nodes.set(subject, {
+                id: `entity:${subject}`,
+                label: subject,
+                type: 'entity',
+                appearances: 0
+              })
+            }
+            nodes.get(subject).appearances += 1
+
+            if (!nodes.has(object)) {
+              nodes.set(object, {
+                id: `entity:${object}`,
+                label: object,
+                type: 'entity',
+                appearances: 0
+              })
+            }
+            nodes.get(object).appearances += 1
+
+            // Add link
+            links.push({
+              source: `entity:${subject}`,
+              target: `entity:${object}`,
+              label: predicate || 'related_to',
+              type: 'triple',
+              confidence: metadata.confidence || 0,
+              topics: metadata.topics || []
             })
+          })
 
-            hasLoadedInitialData.current = true
-          }
+          setRawGraphData({
+            nodes: Array.from(nodes.values()),
+            links
+          })
+
+          hasLoadedInitialData.current = true
+          setQuery(`(Showing ${triplesToShow.length} of ${data.triple_count} triples)`)
         }
       } catch (error) {
         console.error('Failed to load initial graph data:', error)
+      } finally {
+        setLoading(false)
       }
     }
 
     loadInitialData()
-  }, [isConnected, graphData.nodes.length, sendMessage])
+  }, [graphData.nodes.length])
 
   useEffect(() => {
     if (!graphData.nodes.length || !svgRef.current) return
@@ -193,7 +238,10 @@ function GraphPage() {
       .attr('fill', '#e0e0e0')
       .attr('dx', 12)
       .attr('dy', 4)
-      .text(d => d.label.length > 20 ? d.label.slice(0, 20) + '...' : d.label)
+      .text(d => {
+        const label = d.label || ''
+        return label.length > 20 ? label.slice(0, 20) + '...' : label
+      })
 
     // Update positions on simulation tick
     simulation.on('tick', () => {

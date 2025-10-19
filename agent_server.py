@@ -1195,6 +1195,23 @@ async def explore_overview():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/export/all_triples")
+async def export_all_triples():
+    """Export all triples from the knowledge graph as JSON."""
+    try:
+        all_triples = kgraph.get_all_triples()
+
+        return {
+            "export_time": datetime.now().isoformat(),
+            "triple_count": len(all_triples),
+            "triples": all_triples
+        }
+
+    except Exception as e:
+        logger.error(f"Error exporting all triples: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class DocumentIngestRequest(BaseModel):
     text: str
     source: str
