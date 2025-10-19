@@ -58,7 +58,7 @@ app.get('/api/health', async (req, res) => {
 
 app.get('/api/stats', async (req, res) => {
   try {
-    const response = await axios.get(`${PYTHON_API}/stats`);
+    const response = await axios.get(`${AGENT_API}/stats`);
     res.json(response.data);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -86,7 +86,7 @@ app.post('/api/config', async (req, res) => {
 app.get('/api/explore/topics', async (req, res) => {
   try {
     const { top_k = 10, per_topic = 4 } = req.query;
-    const response = await axios.get(`${PYTHON_API}/explore/topics`, {
+    const response = await axios.get(`${AGENT_API}/explore/topics`, {
       params: { top_k, per_topic }
     });
     res.json(response.data);
@@ -98,7 +98,7 @@ app.get('/api/explore/topics', async (req, res) => {
 app.get('/api/explore/entities', async (req, res) => {
   try {
     const { top_k = 10 } = req.query;
-    const response = await axios.get(`${PYTHON_API}/explore/entities`, {
+    const response = await axios.get(`${AGENT_API}/explore/entities`, {
       params: { top_k }
     });
     res.json(response.data);
@@ -109,7 +109,7 @@ app.get('/api/explore/entities', async (req, res) => {
 
 app.get('/api/explore/overview', async (req, res) => {
   try {
-    const response = await axios.get(`${PYTHON_API}/explore/overview`);
+    const response = await axios.get(`${AGENT_API}/explore/overview`);
     res.json(response.data);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -118,7 +118,7 @@ app.get('/api/explore/overview', async (req, res) => {
 
 app.post('/api/query', async (req, res) => {
   try {
-    const response = await axios.post(`${PYTHON_API}/query`, req.body);
+    const response = await axios.post(`${AGENT_API}/query`, req.body);
     res.json(response.data);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -127,7 +127,7 @@ app.post('/api/query', async (req, res) => {
 
 app.post('/api/query/with_topics', async (req, res) => {
   try {
-    const response = await axios.post(`${PYTHON_API}/query/with_topics`, req.body);
+    const response = await axios.post(`${AGENT_API}/query/with_topics`, req.body);
     res.json(response.data);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -140,12 +140,17 @@ app.post('/api/ingest/document', async (req, res) => {
       source: req.body.source,
       textLength: req.body.text?.length
     });
-    const response = await axios.post(`${PYTHON_API}/ingest/document`, req.body);
-    console.log('✅ Document uploaded successfully');
+
+    const response = await axios.post(`${AGENT_API}/ingest/document`, req.body);
+
+    console.log('✅ Document uploaded successfully:', response.data);
     res.json(response.data);
   } catch (error) {
     console.error('❌ Document upload failed:', error.message);
-    res.status(500).json({ error: error.message, details: error.response?.data });
+    res.status(500).json({
+      error: error.message,
+      details: error.response?.data
+    });
   }
 });
 
@@ -270,39 +275,14 @@ async function handleChatMessage(ws, sessionId, data) {
       timestamp: new Date().toISOString()
     }));
 
-    // Step 3: Ingest conversation (buffer for later processing)
-    console.log(`[${sessionId}] Adding conversation to buffer...`);
-    const ingestResponse = await axios.post(`${PYTHON_API}/ingest/conversation`, {
-      messages: [
-        { role: 'user', content: message, name: userName },
-        { role: 'assistant', content: assistantMessage, name: assistantName }
-      ],
-      session_id: sessionId,
-      speaker_names: { user: userName, assistant: assistantName },
-      force_process: false
-    });
+    // Step 3: Conversation is already stored by the agent server
+    // The agent server with episodic memory handles all conversation storage automatically
+    console.log(`[${sessionId}] Conversation stored by agent (episodic memory)...`);
 
-    const wasProcessed = ingestResponse.data.processed;
-    const bufferedCount = ingestResponse.data.buffered_messages;
-
-    console.log(`[${sessionId}] Buffer status: ${bufferedCount} messages buffered, processed: ${wasProcessed}`);
-
-    // Send appropriate status message
-    if (wasProcessed) {
-      ws.send(JSON.stringify({
-        type: 'status',
-        message: `Memory processed! (${bufferedCount} messages)`
-      }));
-    } else {
-      ws.send(JSON.stringify({
-        type: 'status',
-        message: `Buffered (${bufferedCount} messages)`
-      }));
-    }
-
+    // Notify client that conversation was saved
     ws.send(JSON.stringify({
       type: 'conversation_saved',
-      data: ingestResponse.data
+      data: { session_id: sessionId }
     }));
 
   } catch (error) {
@@ -318,7 +298,7 @@ async function handleQuery(ws, data) {
   const { text, limit = 10 } = data;
 
   try {
-    const response = await axios.post(`${PYTHON_API}/query`, {
+    const response = await axios.post(`${AGENT_API}/query`, {
       text,
       limit,
       return_summary: true
@@ -341,7 +321,7 @@ async function handleGraphRequest(ws, data) {
 
   try {
     // Get triples related to query
-    const response = await axios.post(`${PYTHON_API}/query`, {
+    const response = await axios.post(`${AGENT_API}/query`, {
       text: query,
       limit,
       return_summary: false

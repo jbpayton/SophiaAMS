@@ -82,10 +82,14 @@ target/
 profile_default/
 ipython_config.py
 
-WikiGraph/
-test-output/
-test-output/Test*
+# Legacy folders (moved to legacy/)
+legacy/WikiGraph/
+legacy/test-output/
 chunks_*
+
+# Runtime data
+data/
+VectorKnowledgeGraphData/
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
@@ -164,9 +168,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 .claude/settings.local.json
-VectorKnowledgeGraphData/qdrant_data/.lock
-VectorKnowledgeGraphData/qdrant_data/meta.json
-VectorKnowledgeGraphData/qdrant_data/collection/knowledge_graph/storage.sqlite
 
 # Node.js
 node_modules/

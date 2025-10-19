@@ -1,14 +1,14 @@
 @echo off
-echo 🚀 Starting SophiaAMS Web Interface...
+echo 🚀 Starting SophiaAMS with Episodic Memory...
 echo.
 
-:: Start Python API server in background
-echo 📡 Starting Python API server...
-start "Python API" cmd /k "cd .. && python api_server.py"
-timeout /t 3 /nobreak >nul
+:: Start Agent Server (with episodic memory) in background
+echo 🤖 Starting Sophia Agent Server (with episodic memory)...
+start "Sophia Agent" cmd /k "cd .. && venv\Scripts\python.exe agent_server.py"
+timeout /t 5 /nobreak >nul
 
 :: Start Node.js server in background
-echo 🔧 Starting Node.js server...
+echo 🔧 Starting Node.js web server...
 start "Node Server" cmd /k "cd server && npm start"
 timeout /t 3 /nobreak >nul
 
@@ -20,11 +20,12 @@ echo.
 echo ✅ All services started!
 echo.
 echo 📋 Services running:
-echo   - Python API: http://localhost:8000
-echo   - Node Server: http://localhost:3001
+echo   - Sophia Agent (episodic memory): http://localhost:5001
+echo   - Node Server (web proxy): http://localhost:3001
 echo   - React Client: http://localhost:3000
 echo.
 echo 🌐 Open your browser to: http://localhost:3000
+echo 💬 Chat with Sophia - she now has episodic memory and temporal awareness!
 echo.
 echo Press any key to close this window...
 pause >nul

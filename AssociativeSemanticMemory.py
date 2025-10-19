@@ -35,18 +35,19 @@ class AssociativeSemanticMemory:
             except Exception as e:
                 logging.error(f"Could not close Qdrant client: {e}")
 
-    def ingest_text(self, text: str, source: str = "unknown", timestamp: Optional[float] = None, 
-                   speaker: Optional[str] = None) -> Dict: # Removed include_topics
+    def ingest_text(self, text: str, source: str = "unknown", timestamp: Optional[float] = None,
+                   speaker: Optional[str] = None, episode_id: Optional[str] = None) -> Dict:
         """
         Process text by generating summary and extracting triples.
         Topics are now an integral part of each triple.
-        
+
         Args:
             text: Input text to process
             source: Source identifier for the text
             timestamp: Optional timestamp for when the information was received
             speaker: Optional identifier for who generated this text
-            
+            episode_id: Optional episode identifier for episodic memory linking
+
         Returns:
             dict: Results including summary and triples (with embedded topics)
         """
@@ -108,7 +109,8 @@ class AssociativeSemanticMemory:
                     "is_from_summary": False,
                     "source_text": triple_data.get("source_text", ""),
                     "speaker": triple_speaker,
-                    "topics": triple_data.get("topics", []) # Get topics from the triple itself
+                    "topics": triple_data.get("topics", []), # Get topics from the triple itself
+                    "episode_id": episode_id
                 }
                 metadata_list.append(metadata)
             except Exception as e:
@@ -133,7 +135,8 @@ class AssociativeSemanticMemory:
                     "is_from_summary": True,
                     "source_text": triple_data.get("source_text", ""),
                     "speaker": triple_speaker,
-                    "topics": triple_data.get("topics", []) # Get topics from the triple itself
+                    "topics": triple_data.get("topics", []), # Get topics from the triple itself
+                    "episode_id": episode_id
                 }
                 metadata_list.append(metadata)
             except Exception as e:
@@ -594,6 +597,62 @@ If one fact clearly and directly answers the input text, **include that fact ver
                     f"{len(dependencies)} dependencies, {len(examples)} examples")
 
         return result
+
+    def query_recent_memories(self, hours: float = 24, limit: int = 100) -> List[Tuple]:
+        """
+        Query memories from the last N hours with full metadata.
+
+        Args:
+            hours: Number of hours to look back
+            limit: Maximum number of results
+
+        Returns:
+            List of (triple, metadata) tuples from the time range
+        """
+        logging.info(f"[ASM] Querying memories from last {hours} hours")
+        results = self.kgraph.query_recent(hours=hours, limit=limit, return_metadata=True)
+        logging.info(f"[ASM] Found {len(results)} recent memories")
+        return results
+
+    def query_memories_by_time_range(self, start_time: float, end_time: float, limit: int = 100) -> List[Tuple]:
+        """
+        Query memories within a specific time range.
+
+        Args:
+            start_time: Unix timestamp for range start
+            end_time: Unix timestamp for range end
+            limit: Maximum number of results
+
+        Returns:
+            List of (triple, metadata) tuples from the time range
+        """
+        logging.info(f"[ASM] Querying memories between {datetime.fromtimestamp(start_time)} and {datetime.fromtimestamp(end_time)}")
+        results = self.kgraph.query_by_time_range(start_time=start_time, end_time=end_time, limit=limit, return_metadata=True)
+        logging.info(f"[ASM] Found {len(results)} memories in time range")
+        return results
+
+    def query_episodic_context(self, episode_id: str, limit: int = 1000) -> Dict[str, Any]:
+        """
+        Retrieve all semantic memories linked to a specific episode.
+
+        Args:
+            episode_id: The episode identifier
+            limit: Maximum number of triples to retrieve
+
+        Returns:
+            Dict with episode_id, triples, and summary
+        """
+        logging.info(f"[ASM] Retrieving episodic context for episode: {episode_id}")
+        results = self.kgraph.query_by_episode(episode_id=episode_id, limit=limit, return_metadata=True)
+
+        result_dict = {
+            "episode_id": episode_id,
+            "triple_count": len(results),
+            "triples": results
+        }
+
+        logging.info(f"[ASM] Found {len(results)} triples for episode {episode_id}")
+        return result_dict
 
     def get_explorer(self):
         """Return a MemoryExplorer bound to the current knowledge graph."""

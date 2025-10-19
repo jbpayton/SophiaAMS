@@ -1,27 +1,23 @@
-python-dotenv==1.0.0
-openai==1.12.0
-httpx==0.26.0
-sentence-transformers>=2.2.2
-qdrant-client>=1.7.0
-networkx>=3.1
-matplotlib>=3.7.1
-numpy>=1.26.0
-tinydb>=4.8.0
-beautifulsoup4==4.12.3
-requests==2.31.0
-tiktoken==0.6.0
-# New dependencies for improved document processing
-trafilatura==2.0.0  # For web page content extraction
-spacy==3.7.4  # For natural language processing and sentence splitting
-# Note: After installing dependencies, run: python -m spacy download en_core_web_sm 
-scikit-learn>=1.4.2
-hdbscan>=0.8.33
+# Core dependencies
+python-dotenv
+openai
+httpx
+sentence-transformers
+qdrant-client
+networkx
+matplotlib
+numpy
+tinydb
+beautifulsoup4
+requests
+tiktoken
+trafilatura
 
 # LangChain dependencies for agent server
-langchain>=0.1.0
-langchain-openai>=0.0.5
-langchain-community>=0.0.20
-langchain-experimental>=0.3.0
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-websockets>=12.0 
+langchain
+langchain-openai
+langchain-community
+langchain-experimental
+fastapi
+uvicorn[standard]
+websockets

@@ -585,6 +585,132 @@ class VectorKnowledgeGraph:
         logging.info(f"Found {len(similarities)} entity pairs with similarity >= {similarity_threshold}")
         return similarities
 
+    def query_by_time_range(self, start_time: float, end_time: float, limit: int = 100, return_metadata: bool = True) -> List:
+        """
+        Query triples that were created within a specific time range.
+
+        Args:
+            start_time: Unix timestamp for start of range
+            end_time: Unix timestamp for end of range
+            limit: Maximum number of results
+            return_metadata: Whether to return metadata
+
+        Returns:
+            List of triples (with metadata if requested) from the time range
+        """
+        logging.info(f"Querying triples from time range: {datetime.fromtimestamp(start_time)} to {datetime.fromtimestamp(end_time)}")
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Build filter for timestamp range
+        time_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.timestamp",
+                    range=models.Range(
+                        gte=start_time,
+                        lte=end_time
+                    )
+                )
+            ]
+        )
+
+        # Query with filter
+        results, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=time_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        found_triples = []
+        for hit in results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+
+        logging.info(f"Found {len(found_triples)} triples in time range")
+        return found_triples
+
+    def query_recent(self, hours: float = 24, limit: int = 100, return_metadata: bool = True) -> List:
+        """
+        Query triples from the last N hours.
+
+        Args:
+            hours: Number of hours to look back
+            limit: Maximum number of results
+            return_metadata: Whether to return metadata
+
+        Returns:
+            List of recent triples (with metadata if requested)
+        """
+        end_time = time.time()
+        start_time = end_time - (hours * 3600)  # Convert hours to seconds
+
+        logging.info(f"Querying triples from last {hours} hours")
+        return self.query_by_time_range(start_time, end_time, limit, return_metadata)
+
+    def query_by_episode(self, episode_id: str, limit: int = 1000, return_metadata: bool = True) -> List:
+        """
+        Query all triples associated with a specific conversation episode.
+
+        Args:
+            episode_id: The episode identifier
+            limit: Maximum number of results
+            return_metadata: Whether to return metadata
+
+        Returns:
+            List of triples from the episode (with metadata if requested)
+        """
+        logging.info(f"Querying triples for episode: {episode_id}")
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Build filter for episode_id
+        episode_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.episode_id",
+                    match=models.MatchValue(value=episode_id)
+                )
+            ]
+        )
+
+        # Query with filter
+        results, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=episode_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        found_triples = []
+        for hit in results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+
+        logging.info(f"Found {len(found_triples)} triples for episode {episode_id}")
+        return found_triples
+
     def save(self, path=""):
         """Save is now handled automatically by Qdrant's local storage"""
         logging.debug("Save operation not needed (handled by Qdrant)")
