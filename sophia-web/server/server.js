@@ -163,6 +163,55 @@ app.post('/api/ingest/document', async (req, res) => {
   }
 });
 
+// Streaming chat endpoint - proxies Server-Sent Events from agent server
+app.post('/api/chat/:sessionId/stream', async (req, res) => {
+  const { sessionId } = req.params;
+
+  console.log(`🌊 Streaming chat request for session ${sessionId}`);
+
+  try {
+    // Forward request to agent server's streaming endpoint
+    const response = await axios.post(
+      `${AGENT_API}/chat/${sessionId}/stream`,
+      req.body,
+      {
+        responseType: 'stream',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // Set headers for Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+    // Pipe the stream directly to the response
+    response.data.pipe(res);
+
+    // Handle stream errors
+    response.data.on('error', (error) => {
+      console.error('❌ Stream error:', error.message);
+      res.end();
+    });
+
+    // Handle client disconnect
+    req.on('close', () => {
+      console.log(`📴 Client disconnected from stream: ${sessionId}`);
+      response.data.destroy();
+    });
+
+  } catch (error) {
+    console.error('❌ Streaming request failed:', error.message);
+    res.status(500).json({
+      error: error.message,
+      details: error.response?.data
+    });
+  }
+});
+
 app.post('/api/query/procedure', async (req, res) => {
   try {
     console.log('🔍 Procedure lookup request:', { goal: req.body.goal });

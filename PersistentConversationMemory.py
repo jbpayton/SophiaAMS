@@ -5,10 +5,13 @@ This custom memory class extends LangChain's ConversationBufferMemory to add:
 - Automatic persistence of conversations to EpisodicMemory
 - Automatic episode creation and management
 - Link conversation turns to semantic memory extraction
+- Background memory consolidation during idle periods
 """
 
 import logging
 import time
+import asyncio
+import threading
 from typing import Any, Dict, List, Optional
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
@@ -38,10 +41,11 @@ class PersistentConversationMemory(ConversationBufferMemory):
         semantic_memory: Optional[AssociativeSemanticMemory] = None,
         auto_extract_semantics: bool = True,
         context_hours: float = 24,
+        idle_seconds: float = 30.0,  # Consolidate after 30s of inactivity
         **kwargs
     ):
         """
-        Initialize persistent conversation memory.
+        Initialize persistent conversation memory with background consolidation.
 
         Args:
             session_id: Unique session identifier
@@ -49,6 +53,7 @@ class PersistentConversationMemory(ConversationBufferMemory):
             semantic_memory: Optional AssociativeSemanticMemory for extraction
             auto_extract_semantics: Whether to automatically extract triples from messages
             context_hours: Hours of recent context to load on initialization
+            idle_seconds: Seconds of inactivity before background consolidation
             **kwargs: Additional args passed to ConversationBufferMemory
         """
         # Initialize parent first
@@ -60,15 +65,22 @@ class PersistentConversationMemory(ConversationBufferMemory):
         self._semantic_memory = semantic_memory
         self._auto_extract_semantics = auto_extract_semantics
         self._context_hours = context_hours
+        self._idle_seconds = idle_seconds
 
         # Episode tracking
         self._current_episode_id: Optional[str] = None
         self._episode_message_count = 0
 
+        # Background consolidation tracking
+        self._pending_extractions = []  # Queue of (user_input, assistant_output) tuples
+        self._last_activity_time = time.time()
+        self._consolidation_timer = None
+        self._lock = threading.Lock()
+
         # Load recent context from previous episodes
         self._load_recent_context()
 
-        logger.info(f"[PersistentMemory] Initialized for session {session_id}")
+        logger.info(f"[PersistentMemory] Initialized for session {session_id} (idle consolidation after {idle_seconds}s)")
 
     def _load_recent_context(self):
         """Load recent conversation context from episodic memory."""
@@ -150,9 +162,15 @@ class PersistentConversationMemory(ConversationBufferMemory):
             self._episode_message_count += 1
             logger.debug(f"[PersistentMemory] Saved assistant message to episode {self._current_episode_id}")
 
-        # Extract semantics if enabled
+        # Queue for background extraction instead of doing it immediately
         if self._auto_extract_semantics and self._semantic_memory:
-            self._extract_semantics(user_input, assistant_output)
+            with self._lock:
+                self._pending_extractions.append((user_input, assistant_output))
+                self._last_activity_time = time.time()
+                logger.debug(f"[PersistentMemory] Queued extraction ({len(self._pending_extractions)} pending)")
+
+        # Schedule background consolidation
+        self._schedule_consolidation()
 
         # Check if episode should be finalized (e.g., after many messages)
         if self._episode_message_count >= 50:  # Finalize after 50 messages
@@ -241,6 +259,9 @@ class PersistentConversationMemory(ConversationBufferMemory):
 
     def clear(self) -> None:
         """Clear the conversation buffer and finalize current episode."""
+        # Process any pending extractions before clearing
+        self._consolidate_now()
+
         # Finalize episode before clearing
         self._finalize_current_episode()
 
@@ -248,3 +269,72 @@ class PersistentConversationMemory(ConversationBufferMemory):
         super().clear()
 
         logger.info(f"[PersistentMemory] Cleared conversation memory for session {self._session_id}")
+
+    def _schedule_consolidation(self):
+        """Schedule background consolidation after idle period."""
+        # Cancel existing timer if any
+        if self._consolidation_timer:
+            self._consolidation_timer.cancel()
+
+        # Schedule new timer
+        self._consolidation_timer = threading.Timer(
+            self._idle_seconds,
+            self._consolidate_background
+        )
+        self._consolidation_timer.daemon = True
+        self._consolidation_timer.start()
+        logger.debug(f"[PersistentMemory] Scheduled consolidation in {self._idle_seconds}s")
+
+    def _consolidate_background(self):
+        """Background task to consolidate pending extractions during idle time."""
+        with self._lock:
+            # Check if still idle
+            time_since_activity = time.time() - self._last_activity_time
+            if time_since_activity < self._idle_seconds:
+                # Not idle yet, reschedule
+                logger.debug(f"[PersistentMemory] Not idle yet ({time_since_activity:.1f}s), rescheduling")
+                self._schedule_consolidation()
+                return
+
+            if not self._pending_extractions:
+                logger.debug("[PersistentMemory] No pending extractions to process")
+                return
+
+            # Get pending extractions
+            pending = list(self._pending_extractions)
+            self._pending_extractions.clear()
+
+        logger.info(f"[PersistentMemory] 🧠 Background consolidation starting ({len(pending)} conversations → memory)")
+
+        # Process each queued extraction
+        for user_input, assistant_output in pending:
+            try:
+                self._extract_semantics(user_input, assistant_output)
+            except Exception as e:
+                logger.error(f"[PersistentMemory] Error in background extraction: {e}")
+
+        logger.info(f"[PersistentMemory] ✅ Background consolidation complete")
+
+    def _consolidate_now(self):
+        """Immediately process all pending extractions (blocking)."""
+        with self._lock:
+            if not self._pending_extractions:
+                return
+
+            pending = list(self._pending_extractions)
+            self._pending_extractions.clear()
+
+        logger.info(f"[PersistentMemory] ⚡ Immediate consolidation ({len(pending)} conversations)")
+
+        for user_input, assistant_output in pending:
+            try:
+                self._extract_semantics(user_input, assistant_output)
+            except Exception as e:
+                logger.error(f"[PersistentMemory] Error in immediate extraction: {e}")
+
+        logger.info(f"[PersistentMemory] ✅ Immediate consolidation complete")
+
+    def get_pending_count(self) -> int:
+        """Get the number of pending extractions waiting for consolidation."""
+        with self._lock:
+            return len(self._pending_extractions)

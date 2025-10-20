@@ -14,12 +14,22 @@ An intelligent conversational AI system with dual-memory architecture: semantic 
 - **Tool-Based Architecture**: Extensible agent with memory query, web search, and Python REPL tools
 - **Observable Actions**: All tool calls are logged and visible
 - **Session Management**: Isolated conversation contexts with cross-session semantic memory sharing
-- **Web Interface**: Modern React-based chat UI
+- **Automatic Memory Recall**: Relevant memories are automatically retrieved and injected before each query
+- **Streaming Thoughts**: Real-time display of agent reasoning, tool calls, and memory retrieval
+- **Web Interface**: Modern React-based chat UI with interactive knowledge graph visualization
 
-### Web Search Integration
+### Web Search & Learning
 - **SearXNG Integration**: Privacy-focused metasearch engine
 - **Real-time Information**: Sophia can search the web for current information
 - **Automatic Source Attribution**: Results include source URLs and descriptions
+- **Web Page Learning**: Permanently store web content in semantic memory with full triple extraction
+
+### Knowledge Graph Visualization
+- **Interactive Graph View**: Explore up to 500 most connected nodes from the knowledge graph
+- **Node-Centric Navigation**: Click to pan/zoom, double-click to focus on a node's connections
+- **Global View Toggle**: Easy return to full graph view from focused mode
+- **Real-Time Updates**: Graph reflects current state of semantic memory
+- **Admin Controls**: View and export all triples as JSON
 
 ## Quick Start
 
@@ -59,7 +69,9 @@ An intelligent conversational AI system with dual-memory architecture: semantic 
 
 5. **Open the web interface**
    - Navigate to http://localhost:3000
-   - Start chatting with Sophia!
+   - Chat page: Real-time conversation with visible agent thoughts
+   - Graph page: Interactive visualization of the knowledge graph
+   - Admin page: View and export all knowledge triples
 
 ## Manual Startup
 
@@ -110,7 +122,11 @@ sophia-web/
 │   └── server.js              # WebSocket & HTTP proxy
 ├── client/                    # React web UI
 │   ├── src/
-│   │   ├── App.jsx           # Main chat interface
+│   │   ├── App.jsx           # Main application
+│   │   ├── pages/
+│   │   │   ├── ChatPage.jsx  # Chat interface with streaming thoughts
+│   │   │   ├── GraphPage.jsx # Interactive knowledge graph visualization
+│   │   │   └── AdminPage.jsx # Admin controls & triple export
 │   │   └── components/       # UI components
 │   └── package.json
 └── start-all.bat             # Startup script
@@ -155,36 +171,88 @@ The system uses two complementary memory types:
 
 Sophia has access to the following tools:
 
-- **store_fact**: Store facts in semantic memory
+### Semantic Memory Tools
 - **query_memory**: Search semantic memory by topic
-- **query_recent_memory**: Get recent memories by timeframe
-- **recall_conversation**: Find past conversations by keyword
-- **get_timeline**: View conversation activity timeline
-- **searxng_search**: Search the web via SearXNG
-- **python_repl**: Execute Python code for calculations
+- **query_procedure**: Look up learned procedures for accomplishing tasks
+- **store_fact**: Store new facts in long-term memory
+
+### Episodic Memory Tools
+- **query_recent_memory**: Get recent memories by timeframe (today, yesterday, last week, etc.)
+- **get_timeline**: View conversation activity timeline over recent days
+- **recall_conversation**: Find specific past conversations by topic
+
+### Perception & Learning Tools
+- **searxng_search**: Search the web for current information
+- **read_web_page**: Quickly skim web pages (fast, temporary - doesn't store)
+- **learn_from_web_page**: Permanently learn from a webpage (slow, permanent knowledge extraction)
+- **python_repl**: Execute Python code for complex analysis and data transformations
+
+### Automatic Features
+- **Auto-Recall**: Relevant memories are automatically retrieved and injected into context before each query
+- **Background Consolidation**: Conversations are automatically extracted to memory during idle periods (30s inactivity)
+
+## Web Interface Features
+
+### Chat Page
+- **Real-Time Streaming**: See agent responses as they're generated using Server-Sent Events
+- **Visible Thoughts**: Expand the "Agent Thoughts" section to view:
+  - 🧠 **Automatic Memory Recall**: Shows which memories were retrieved before answering
+  - **Reasoning**: Agent's internal thought process and decision-making
+  - **Tool Calls**: Expandable sections showing which tools were called, with inputs and outputs
+- **Session Management**: Each chat session maintains its own conversation history
+
+### Graph Page
+- **Interactive Visualization**: Explore up to 500 most connected nodes from your knowledge graph
+- **Node Navigation**:
+  - **Single-click**: Select node to view details, pan/zoom to center
+  - **Double-click**: Focus on node's direct connections only
+  - **Global View Button**: Return to full graph view from focused mode
+- **Visual Elements**:
+  - Node size indicates connection count
+  - Links show relationships between entities
+  - Color coding for different node types
+
+### Admin Page
+- **Triple Viewer**: View all knowledge graph triples in a scrollable list
+- **JSON Export**: Download all triples as timestamped JSON files
+- **Statistics**: See total triple count and graph metrics
 
 ## API Endpoints
 
 ### Agent Server (Port 5001)
 
 ```
-POST   /chat/{session_id}           # Send message to agent
+POST   /chat/{session_id}           # Send message to agent (HTTP)
+POST   /chat/{session_id}/stream    # Streaming chat with Server-Sent Events
 GET    /health                       # Health check
 DELETE /session/{session_id}         # Clear session
+
+# Episodic Memory
 GET    /api/episodes/recent          # Get recent episodes
 GET    /api/episodes/{episode_id}    # Get specific episode
 GET    /api/episodes/search          # Search episodes
 GET    /api/episodes/timeline        # Get activity timeline
 GET    /api/episodes/time-range      # Get episodes in time range
+
+# Knowledge Graph
+POST   /ingest/document              # Upload and process documents
+GET    /query                        # Query knowledge graph
+GET    /stats                        # Get graph statistics
+GET    /explore/topics               # Explore topics
+GET    /explore/entities             # Explore entities
+GET    /explore/overview             # Get graph overview
+GET    /export/all_triples           # Export all triples as JSON
 ```
 
 ### Web Server (Port 3001)
 
 ```
-WebSocket  /                         # Chat WebSocket
+WebSocket  /ws/chat/{session_id}    # WebSocket chat connection
+POST       /api/chat/:sessionId/stream  # Proxy to streaming endpoint
 GET        /api/health               # Health check
-POST       /api/ingest/document      # Upload document (not implemented)
+POST       /api/ingest/document      # Upload document
 POST       /api/query/procedure      # Query procedural knowledge
+GET        /api/export/all_triples   # Export all knowledge graph triples
 ```
 
 ## Testing

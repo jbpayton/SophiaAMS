@@ -1,7 +1,110 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { Send, Brain, Loader, CheckCircle, AlertCircle, Settings2, Trash2 } from 'lucide-react'
+import { Send, Brain, Loader, CheckCircle, AlertCircle, Settings2, Trash2, ChevronDown, ChevronRight, Sparkles, Wrench } from 'lucide-react'
 import './ChatPage.css'
+
+// Component to display collapsable thoughts (reasoning + tool calls + auto-recall)
+function ThoughtsDisplay({ thoughts, autoExpand = false }) {
+  const [isExpanded, setIsExpanded] = useState(autoExpand)
+  const [expandedTools, setExpandedTools] = useState(new Set())
+
+  const toggleTool = (toolId) => {
+    setExpandedTools(prev => {
+      const next = new Set(prev)
+      if (next.has(toolId)) {
+        next.delete(toolId)
+      } else {
+        next.add(toolId)
+      }
+      return next
+    })
+  }
+
+  return (
+    <div className="thoughts-container">
+      <button
+        className="thoughts-toggle"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <Sparkles size={14} />
+        <span>Agent Thoughts ({thoughts.toolCalls.length} tool{thoughts.toolCalls.length !== 1 ? 's' : ''} used)</span>
+      </button>
+
+      {isExpanded && (
+        <div className="thoughts-content">
+          {/* Auto-recalled memories section */}
+          {thoughts.autoRecall && (
+            <div className="thoughts-section">
+              <h4><Brain size={14} /> Automatic Memory Recall:</h4>
+              <div className="auto-recall-content">
+                <pre>{thoughts.autoRecall}</pre>
+              </div>
+            </div>
+          )}
+
+          {thoughts.reasoning.length > 0 && (
+            <div className="thoughts-section">
+              <h4>Reasoning:</h4>
+              <div className="reasoning-list">
+                {thoughts.reasoning.map((text, idx) => (
+                  <div key={idx} className="reasoning-item">{text}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {thoughts.toolCalls.length > 0 && (
+            <div className="thoughts-section">
+              <h4>Tool Calls:</h4>
+              {thoughts.toolCalls.map((toolCall) => {
+                const isToolExpanded = expandedTools.has(toolCall.id)
+                return (
+                  <div key={toolCall.id} className={`tool-call ${toolCall.status}`}>
+                    <button
+                      className="tool-call-header"
+                      onClick={() => toggleTool(toolCall.id)}
+                    >
+                      {isToolExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      <Wrench size={14} />
+                      <span className="tool-name">{toolCall.tool}</span>
+                      <span className={`tool-status ${toolCall.status}`}>
+                        {toolCall.status === 'running' && '⏳'}
+                        {toolCall.status === 'completed' && '✓'}
+                        {toolCall.status === 'error' && '✗'}
+                      </span>
+                    </button>
+
+                    {isToolExpanded && (
+                      <div className="tool-call-details">
+                        <div className="tool-input">
+                          <strong>Input:</strong>
+                          <pre>{JSON.stringify(toolCall.input, null, 2)}</pre>
+                        </div>
+                        {toolCall.output && (
+                          <div className="tool-output">
+                            <strong>Output:</strong>
+                            <pre>{typeof toolCall.output === 'string' ? toolCall.output : JSON.stringify(toolCall.output, null, 2)}</pre>
+                          </div>
+                        )}
+                        {toolCall.error && (
+                          <div className="tool-error">
+                            <strong>Error:</strong>
+                            <pre>{toolCall.error}</pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function ChatPage() {
   const { isConnected, sessionId, messages, sendMessage, clearMessages } = useWebSocket()
@@ -12,6 +115,8 @@ function ChatPage() {
     return saved ? JSON.parse(saved) : []
   })
   const [currentStatus, setCurrentStatus] = useState('')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [currentThoughts, setCurrentThoughts] = useState(null)
   const [autoRetrieve, setAutoRetrieve] = useState(() => {
     const saved = localStorage.getItem('sophiaams_auto_retrieve')
     return saved !== null ? JSON.parse(saved) : true
@@ -177,20 +282,171 @@ function ChatPage() {
     return () => clearInterval(interval)
   }, [sessionId])
 
-  const handleSend = () => {
-    if (!input.trim() || !isConnected) return
+  const handleSend = async () => {
+    if (!input.trim() || !sessionId || isStreaming) return
 
-    sendMessage({
-      type: 'chat',
-      data: {
-        message: input,
-        autoRetrieve,
-        userName,
-        assistantName
-      }
-    })
-
+    const userMessage = input
     setInput('')
+    setIsStreaming(true)
+
+    // Add user message immediately
+    const userMsg = {
+      id: Date.now(),
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date().toISOString()
+    }
+    setChatMessages(prev => [...prev, userMsg])
+
+    // Initialize thoughts tracking for this response
+    const thoughts = {
+      reasoning: [],
+      toolCalls: [],
+      status: 'thinking'
+    }
+    setCurrentThoughts(thoughts)
+
+    try {
+      // Call streaming endpoint using fetch (EventSource doesn't support POST)
+      const response = await fetch(`/api/chat/${sessionId}/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: userMessage
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Streaming request failed')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep last incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            try {
+              const event = JSON.parse(data)
+              handleStreamEvent(event, thoughts)
+            } catch (e) {
+              console.error('Failed to parse event:', e)
+            }
+          }
+        }
+      }
+
+      // Finalize thoughts
+      setCurrentThoughts(null)
+
+    } catch (error) {
+      console.error('Streaming error:', error)
+      setChatMessages(prev => [...prev, {
+        id: Date.now(),
+        role: 'error',
+        content: error.message,
+        timestamp: new Date().toISOString()
+      }])
+    } finally {
+      setIsStreaming(false)
+    }
+  }
+
+  const handleStreamEvent = (event, thoughts) => {
+    console.log('Stream event:', event.type, event.data)
+
+    switch (event.type) {
+      case 'auto_recall':
+        // Store auto-recalled memories in thoughts
+        thoughts.autoRecall = event.data.memories
+        setCurrentThoughts({...thoughts})
+        break
+
+      case 'thinking':
+        setCurrentStatus('Agent is thinking...')
+        break
+
+      case 'reasoning':
+        thoughts.reasoning.push(event.data.text)
+        setCurrentThoughts({...thoughts})
+        break
+
+      case 'tool_start':
+        // Extract reasoning from log if available
+        if (event.data.log && event.data.log.trim()) {
+          // Parse the agent's reasoning from the log
+          const logLines = event.data.log.split('\n').filter(line => line.trim())
+          logLines.forEach(line => {
+            if (line && !line.includes('Action:') && !line.includes('Action Input:')) {
+              thoughts.reasoning.push(line.trim())
+            }
+          })
+        }
+
+        const toolCall = {
+          id: Date.now() + Math.random(),
+          tool: event.data.tool,
+          input: event.data.input,
+          status: 'running',
+          startTime: event.timestamp
+        }
+        thoughts.toolCalls.push(toolCall)
+        setCurrentThoughts({...thoughts})
+        setCurrentStatus(`Using tool: ${event.data.tool}`)
+        break
+
+      case 'tool_end':
+        const lastTool = thoughts.toolCalls[thoughts.toolCalls.length - 1]
+        if (lastTool) {
+          lastTool.output = event.data.output
+          lastTool.status = 'completed'
+          lastTool.endTime = event.timestamp
+        }
+        setCurrentThoughts({...thoughts})
+        break
+
+      case 'tool_error':
+        const errorTool = thoughts.toolCalls[thoughts.toolCalls.length - 1]
+        if (errorTool) {
+          errorTool.error = event.data.error
+          errorTool.status = 'error'
+        }
+        setCurrentThoughts({...thoughts})
+        break
+
+      case 'final_response':
+        // Add assistant response with embedded thoughts
+        setChatMessages(prev => [...prev, {
+          id: Date.now(),
+          role: 'assistant',
+          content: event.data.response,
+          thoughts: {...thoughts},
+          timestamp: new Date().toISOString()
+        }])
+        setCurrentStatus('')
+        break
+
+      case 'error':
+        setChatMessages(prev => [...prev, {
+          id: Date.now(),
+          role: 'error',
+          content: event.data.message,
+          timestamp: new Date().toISOString()
+        }])
+        setCurrentStatus('')
+        break
+    }
   }
 
   const handleKeyPress = (e) => {
@@ -346,6 +602,9 @@ function ChatPage() {
                 <div className="message-content">
                   <strong>{assistantName}:</strong> {msg.content}
                 </div>
+                {msg.thoughts && (msg.thoughts.reasoning.length > 0 || msg.thoughts.toolCalls.length > 0) && (
+                  <ThoughtsDisplay thoughts={msg.thoughts} />
+                )}
               </div>
             )
           }
@@ -366,6 +625,16 @@ function ChatPage() {
           <div className="status-indicator">
             <Loader className="spinner" size={16} />
             <span>{currentStatus}</span>
+          </div>
+        )}
+
+        {/* Show current thoughts while thinking */}
+        {currentThoughts && (currentThoughts.reasoning.length > 0 || currentThoughts.toolCalls.length > 0) && (
+          <div className="message assistant-message thinking">
+            <div className="message-content">
+              <strong>Agent is thinking...</strong>
+            </div>
+            <ThoughtsDisplay thoughts={currentThoughts} autoExpand={true} />
           </div>
         )}
 

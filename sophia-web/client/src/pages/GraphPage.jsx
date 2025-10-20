@@ -13,6 +13,8 @@ function GraphPage() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showTopics, setShowTopics] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [focusedNode, setFocusedNode] = useState(null) // Track which node is centered
+  const [globalGraphData, setGlobalGraphData] = useState(null) // Store global view
 
   // Confidence thresholds
   const [tripleThreshold, setTripleThreshold] = useState(0.0)
@@ -80,15 +82,11 @@ function GraphPage() {
         if (res.ok) {
           const data = await res.json()
 
-          // Limit to first 100 triples to avoid overwhelming the browser
-          const maxTriples = 100
-          const triplesToShow = data.triples.slice(0, maxTriples)
-
-          // Transform triples into graph format
+          // Transform triples into graph format and calculate node connections
           const nodes = new Map()
           const links = []
 
-          triplesToShow.forEach((triple) => {
+          data.triples.forEach((triple) => {
             const subject = triple.subject
             const predicate = triple.predicate
             const object = triple.object
@@ -131,13 +129,29 @@ function GraphPage() {
             })
           })
 
-          setRawGraphData({
-            nodes: Array.from(nodes.values()),
-            links
-          })
+          // Sort nodes by connections (appearances) and take top 500
+          const sortedNodes = Array.from(nodes.values())
+            .sort((a, b) => b.appearances - a.appearances)
+            .slice(0, 500)
+
+          // Get IDs of top nodes
+          const topNodeIds = new Set(sortedNodes.map(n => n.id))
+
+          // Filter links to only include those between top nodes
+          const filteredLinks = links.filter(link =>
+            topNodeIds.has(link.source) && topNodeIds.has(link.target)
+          )
+
+          const graphData = {
+            nodes: sortedNodes,
+            links: filteredLinks
+          }
+
+          setRawGraphData(graphData)
+          setGlobalGraphData(graphData) // Store for "return to global" button
 
           hasLoadedInitialData.current = true
-          setQuery(`(Showing ${triplesToShow.length} of ${data.triple_count} triples)`)
+          setQuery(`(Showing top 500 most connected nodes from ${data.triple_count} triples)`)
         }
       } catch (error) {
         console.error('Failed to load initial graph data:', error)
@@ -226,6 +240,11 @@ function GraphPage() {
       .on('click', (event, d) => {
         event.stopPropagation()
         setSelectedNode(d)
+        focusOnNode(d)
+      })
+      .on('dblclick', (event, d) => {
+        event.stopPropagation()
+        recenterOnNode(d)
       })
 
     // Create node labels
@@ -280,6 +299,50 @@ function GraphPage() {
       if (!event.active) simulation.alphaTarget(0)
       event.subject.fx = null
       event.subject.fy = null
+    }
+
+    // Focus on a node (pan to it smoothly)
+    function focusOnNode(node) {
+      const svgElement = svgRef.current
+      const width = svgElement.clientWidth
+      const height = svgElement.clientHeight
+
+      // Calculate transform to center the node
+      const scale = 1.5 // Zoom in a bit
+      const x = width / 2 - node.x * scale
+      const y = height / 2 - node.y * scale
+
+      svg.transition()
+        .duration(750)
+        .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale))
+    }
+
+    // Recenter graph around a node (show only its connections)
+    function recenterOnNode(node) {
+      setFocusedNode(node)
+
+      // Find all directly connected nodes
+      const connectedNodeIds = new Set([node.id])
+      const connectedLinks = []
+
+      graphData.links.forEach(link => {
+        const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+        const targetId = typeof link.target === 'object' ? link.target.id : link.target
+
+        if (sourceId === node.id || targetId === node.id) {
+          connectedNodeIds.add(sourceId)
+          connectedNodeIds.add(targetId)
+          connectedLinks.push(link)
+        }
+      })
+
+      // Filter graph to show only connected nodes
+      const focusedNodes = graphData.nodes.filter(n => connectedNodeIds.has(n.id))
+
+      setRawGraphData({
+        nodes: focusedNodes,
+        links: connectedLinks
+      })
     }
 
     // Click on SVG to deselect
@@ -357,6 +420,27 @@ function GraphPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {focusedNode && (
+            <button
+              onClick={() => {
+                setFocusedNode(null)
+                setRawGraphData(globalGraphData)
+              }}
+              style={{
+                padding: '6px 12px',
+                background: '#10b981',
+                color: 'white',
+                border: '1px solid #059669',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 'bold'
+              }}
+            >
+              ← Return to Global View
+            </button>
+          )}
+
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#e0e0e0', cursor: 'pointer' }}>
             <input
               type="checkbox"
@@ -525,6 +609,9 @@ function GraphPage() {
               {selectedNode.type === 'topic' ? 'Topic Cluster' : 'Entity'}
               {selectedNode.triple_count && ` (${selectedNode.triple_count} triples)`}
               {selectedNode.appearances && ` (${selectedNode.appearances} appearances)`}
+            </p>
+            <p style={{ fontSize: '12px', color: '#888', fontStyle: 'italic', marginTop: '8px' }}>
+              💡 Double-click to focus on this node's connections
             </p>
             <div className="connections">
               <h4>{selectedNode.type === 'topic' ? 'Related Entities:' : 'Connections:'}</h4>

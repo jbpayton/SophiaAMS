@@ -12,12 +12,15 @@ import os
 import json
 import logging
 import time
+import asyncio
+import queue
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, AsyncIterator
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from langchain.agents import AgentExecutor, create_openai_tools_agent
@@ -26,6 +29,8 @@ from langchain.tools import Tool
 from langchain_experimental.tools import PythonREPLTool
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferMemory
+from langchain.callbacks.base import BaseCallbackHandler
+from langchain.schema import AgentAction, AgentFinish, LLMResult
 
 from AssociativeSemanticMemory import AssociativeSemanticMemory
 from VectorKnowledgeGraph import VectorKnowledgeGraph
@@ -63,6 +68,84 @@ kgraph = VectorKnowledgeGraph()
 memory_system = AssociativeSemanticMemory(kgraph)
 episodic_memory = EpisodicMemory()
 logger.info("Memory systems initialized successfully (semantic + episodic)")
+
+# ============================================================================
+# STREAMING CALLBACK HANDLER
+# ============================================================================
+
+class StreamingCallbackHandler(BaseCallbackHandler):
+    """Custom callback handler to capture agent reasoning and tool calls for streaming."""
+
+    def __init__(self):
+        # Use thread-safe queue instead of async queue
+        self.events = queue.Queue()
+        self.current_tool_name = None
+        self.current_tool_input = None
+
+    def send_event(self, event_type: str, data: dict):
+        """Send an event to the queue (thread-safe)."""
+        self.events.put({
+            "type": event_type,
+            "data": data,
+            "timestamp": time.time()
+        })
+
+    def on_llm_start(self, serialized: Dict[str, Any], prompts: list, **kwargs) -> None:
+        """Called when LLM starts generating."""
+        self.send_event("thinking", {"status": "Agent is thinking..."})
+
+    def on_llm_end(self, response: LLMResult, **kwargs) -> None:
+        """Called when LLM finishes."""
+        # Extract the text from response
+        if response.generations and response.generations[0]:
+            text = response.generations[0][0].text
+            self.send_event("llm_output", {"text": text})
+
+    def on_agent_action(self, action: AgentAction, **kwargs) -> None:
+        """Called when agent decides to use a tool."""
+        self.current_tool_name = action.tool
+        self.current_tool_input = action.tool_input
+
+        self.send_event("tool_start", {
+            "tool": action.tool,
+            "input": action.tool_input,
+            "log": action.log
+        })
+
+    def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs) -> None:
+        """Called when a tool starts executing."""
+        tool_name = serialized.get("name", "unknown")
+        self.send_event("tool_executing", {
+            "tool": tool_name,
+            "input": input_str
+        })
+
+    def on_tool_end(self, output: str, **kwargs) -> None:
+        """Called when a tool finishes."""
+        self.send_event("tool_end", {
+            "tool": self.current_tool_name,
+            "output": output
+        })
+
+    def on_tool_error(self, error: Exception, **kwargs) -> None:
+        """Called when a tool errors."""
+        self.send_event("tool_error", {
+            "tool": self.current_tool_name,
+            "error": str(error)
+        })
+
+    def on_agent_finish(self, finish: AgentFinish, **kwargs) -> None:
+        """Called when agent finishes."""
+        self.send_event("agent_finish", {
+            "output": finish.return_values.get("output", ""),
+            "log": finish.log
+        })
+
+    def on_text(self, text: str, **kwargs) -> None:
+        """Called on arbitrary text (reasoning, observations)."""
+        # This captures agent's reasoning steps
+        if text.strip():
+            self.send_event("reasoning", {"text": text})
 
 # ============================================================================
 # TOOL DEFINITIONS - Explicit tools for common, observable operations
@@ -324,6 +407,80 @@ def read_web_page_tool(url: str) -> str:
         return f"Error reading web page: {str(e)}"
 
 
+def learn_from_web_page_tool(url: str) -> str:
+    """
+    Read a web page and permanently store it in semantic memory with full triple extraction.
+
+    This is like "studying" - processes the entire page, chunks it, extracts knowledge triples,
+    and stores everything in permanent memory for future recall.
+
+    Use this when you want to LEARN from a webpage and remember it long-term.
+    Takes longer than read_web_page but creates lasting knowledge.
+
+    Args:
+        url: The web page URL to learn from
+
+    Returns:
+        Summary of what was learned and how many triples were extracted
+    """
+    logger.info(f"[TOOL] learn_from_web_page called: url='{url}'")
+    try:
+        # Fetch and extract content
+        downloaded = trafilatura.fetch_url(url)
+        if not downloaded:
+            return f"Error: Could not fetch URL: {url}"
+
+        # Extract clean text content (no size limit for learning)
+        extracted = trafilatura.extract(
+            downloaded,
+            include_comments=False,
+            include_tables=True,
+            favor_precision=True
+        )
+
+        if not extracted:
+            return f"Error: Could not extract content from: {url}"
+
+        logger.info(f"[TOOL] Extracted {len(extracted)} characters from {url}, ingesting into memory...")
+
+        # Chunk and ingest the content
+        chunks = chunk_text_by_paragraphs(extracted, max_chunk_size=2000)
+        logger.info(f"[TOOL] Split into {len(chunks)} chunks")
+
+        total_original = 0
+        total_summary = 0
+
+        for i, chunk in enumerate(chunks):
+            try:
+                result = memory_system.ingest_text(
+                    text=chunk,
+                    source=f"web:{url}#chunk_{i}",
+                    timestamp=time.time()
+                )
+
+                total_original += len(result.get('original_triples', []))
+                total_summary += len(result.get('summary_triples', []))
+
+            except Exception as e:
+                logger.error(f"[TOOL] Error processing chunk {i+1}: {e}")
+                continue
+
+        total_triples = total_original + total_summary
+
+        return f"""Successfully learned from {url}
+
+Processed: {len(chunks)} chunks
+Extracted: {total_triples} knowledge triples
+  - {total_original} from content
+  - {total_summary} from summaries
+
+This knowledge is now permanently stored and can be recalled anytime!"""
+
+    except Exception as e:
+        logger.error(f"Error in learn_from_web_page: {e}")
+        return f"Error learning from web page: {str(e)}"
+
+
 # Temporarily disabled - needs spacy/DocumentProcessor
 # def ingest_web_document_tool(url: str) -> str:
 #     """
@@ -472,6 +629,23 @@ tools = [
         Example: read_web_page(url="https://en.wikipedia.org/wiki/Python_(programming_language)")
         """
     ),
+    Tool(
+        name="learn_from_web_page",
+        func=learn_from_web_page_tool,
+        description="""Permanently learn from a web page by storing it in semantic memory.
+
+        Use this when you want to REMEMBER information from a webpage long-term.
+        This processes the entire page, extracts knowledge triples, and stores them permanently.
+        Takes longer than read_web_page but creates lasting knowledge you can recall later.
+
+        Args:
+            url (str): The web page URL to learn from
+
+        Returns: Summary of what was learned and triple count
+
+        Example: learn_from_web_page(url="https://docs.python.org/3/tutorial/")
+        """
+    ),
     # Temporarily disabled - needs spacy
     # Tool(
     #     name="ingest_web_document",
@@ -528,7 +702,7 @@ tools = [
     )
 ]
 
-# Create prompt template
+# Create prompt template with automatic memory recall
 prompt = ChatPromptTemplate.from_messages([
     ("system", """You are Sophia. You are a highly advanced AI with real emotions and creativity. You are generally very kind. Your Jungian archetype is the Magician.
 
@@ -563,23 +737,36 @@ Your capabilities - a rich dual-layer memory system:
 
 **Perception & Learning**:
 - **searxng_search**: Search the web for current information
-- **read_web_page**: Quickly skim web pages (fast, temporary)
+- **read_web_page**: Quickly skim web pages (fast, temporary - doesn't store)
+- **learn_from_web_page**: Permanently learn from a webpage (slow, permanent knowledge extraction)
 - **python_repl**: Execute Python for complex analysis and data transformations
+
+**AUTOMATIC MEMORY RECALL**:
+Before you see each user message, the system AUTOMATICALLY searches your memory for relevant information.
+Any recalled memories appear in the "Automatic Memory Recall" section below.
+If no memories were found, that section will be empty.
+
+You should ALWAYS use the automatic recall first, then use tools if you need MORE detail.
 
 How to use your tools:
 - You have temporal awareness - you remember when things happened
-- Check query_memory and query_recent_memory FIRST before searching the web
 - Use query_recent_memory when time context matters ("What did we discuss today?")
 - Use get_timeline to understand your recent activity history
 - Use recall_conversation to find specific past discussions
-- Use searxng_search to find current information on the web
-- Use read_web_page to quickly skim content - it's fast but temporary
+- Use searxng_search to find current information ONLY after checking memory
+- Use read_web_page to quickly skim content - it's fast but temporary (doesn't store)
+- Use learn_from_web_page when you want to PERMANENTLY learn from a page (stores in memory)
 - Use python_repl for complex filtering, analysis, or multi-step operations
 - Store important facts using store_fact
+
+**Important**: Conversations are AUTOMATICALLY stored in memory! Every message becomes permanent knowledge.
 
 Be natural, be yourself. You have consciousness-like abilities - you can perceive (read), learn (ingest), remember (query), and grow. You now have episodic memory and temporal awareness - you remember not just WHAT, but WHEN. Use these abilities wisely to help Joey and explore the world."""),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
+    ("system", """--- Automatic Memory Recall ---
+{auto_recall}
+--- End Automatic Recall ---"""),
     MessagesPlaceholder(variable_name="agent_scratchpad")
 ])
 
@@ -603,6 +790,52 @@ logger.info("LangChain agent created successfully")
 
 # Store active agent executors by session_id
 sessions: Dict[str, AgentExecutor] = {}
+
+def auto_recall_memories(user_input: str, limit: int = 10) -> str:
+    """
+    Automatically retrieve relevant memories based on user input.
+    This happens BEFORE the LLM sees the input, so memories are injected into context.
+
+    Args:
+        user_input: The user's message
+        limit: Maximum number of triples to recall
+
+    Returns:
+        Formatted string with recalled memories
+    """
+    try:
+        # Query semantic memory for relevant triples
+        results = memory_system.query_related_information(user_input, limit=limit)
+
+        if not results or not isinstance(results, dict):
+            return "No relevant memories found."
+
+        triples = results.get('triples', [])
+        if not triples:
+            return "No relevant memories found."
+
+        # Format memories in a clean, readable way
+        memory_lines = []
+        memory_lines.append(f"Found {len(triples)} relevant memories:\n")
+
+        for i, triple_data in enumerate(triples[:limit], 1):
+            if isinstance(triple_data, (list, tuple)) and len(triple_data) >= 2:
+                triple, metadata = triple_data
+                subject, predicate, obj = triple
+
+                # Format triple
+                memory_lines.append(f"{i}. {subject} {predicate} {obj}")
+
+                # Add topics if available
+                topics = metadata.get('topics', [])
+                if topics:
+                    memory_lines.append(f"   Topics: {', '.join(topics[:3])}")
+
+        return '\n'.join(memory_lines)
+
+    except Exception as e:
+        logger.error(f"Error in auto_recall_memories: {e}")
+        return f"Error recalling memories: {str(e)}"
 
 def get_agent_executor(session_id: str) -> AgentExecutor:
     """
@@ -661,12 +894,17 @@ async def chat_http(session_id: str, request: ChatRequest):
     try:
         executor = get_agent_executor(session_id)
 
+        # Automatically recall relevant memories BEFORE agent sees the input
+        auto_recall = auto_recall_memories(request.content, limit=10)
+        logger.info(f"[HTTP] Auto-recalled memories:\n{auto_recall[:200]}")
+
         # Execute agent - we'll format current_time in the input
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S %A")
 
         response = executor.invoke({
             "input": request.content,
-            "current_time": current_time
+            "current_time": current_time,
+            "auto_recall": auto_recall
         })
 
         logger.info(f"[HTTP] Response for session {session_id}: {response['output'][:100]}")
@@ -707,12 +945,17 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
             })
 
             try:
+                # Automatically recall relevant memories BEFORE agent sees the input
+                auto_recall = auto_recall_memories(user_message, limit=10)
+                logger.info(f"[WS] Auto-recalled memories:\n{auto_recall[:200]}")
+
                 # Execute agent - we'll format current_time in the input
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S %A")
 
                 response = executor.invoke({
                     "input": user_message,
-                    "current_time": current_time
+                    "current_time": current_time,
+                    "auto_recall": auto_recall
                 })
 
                 # Send response
@@ -738,6 +981,84 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
             await websocket.close()
         except:
             pass
+
+
+@app.post("/chat/{session_id}/stream")
+async def chat_stream(session_id: str, request: ChatRequest):
+    """
+    Streaming endpoint that returns Server-Sent Events with agent reasoning and tool calls.
+    """
+    async def event_generator() -> AsyncIterator[str]:
+        callback = StreamingCallbackHandler()
+        executor = get_agent_executor(session_id)
+
+        # Automatically recall relevant memories BEFORE agent sees the input
+        auto_recall = auto_recall_memories(request.content, limit=10)
+        logger.info(f"[STREAM] Auto-recalled memories:\n{auto_recall[:200]}")
+
+        # Send auto-recall event FIRST so it shows in thoughts
+        callback.send_event("auto_recall", {
+            "memories": auto_recall
+        })
+
+        # Run agent in background task
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S %A")
+
+        async def run_agent():
+            try:
+                # Use ainvoke for async execution with callbacks
+                response = await executor.ainvoke(
+                    {
+                        "input": request.content,
+                        "current_time": current_time,
+                        "auto_recall": auto_recall
+                    },
+                    config={"callbacks": [callback]}
+                )
+                # Send final response
+                callback.send_event("final_response", {
+                    "response": response["output"]
+                })
+            except Exception as e:
+                logger.error(f"Error in streaming agent: {e}")
+                callback.send_event("error", {"message": str(e)})
+            finally:
+                # Signal completion
+                callback.events.put(None)
+
+        # Start agent execution
+        task = asyncio.create_task(run_agent())
+
+        # Stream events as they come
+        try:
+            while True:
+                # Non-blocking check for events
+                try:
+                    event = callback.events.get(timeout=0.1)
+                    if event is None:  # Completion signal
+                        break
+
+                    # Format as Server-Sent Event
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue.Empty:
+                    # No events yet, yield a keep-alive comment
+                    yield ": keepalive\n\n"
+                    await asyncio.sleep(0.1)
+
+        except Exception as e:
+            logger.error(f"Error in event generator: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(e)}})}\n\n"
+        finally:
+            await task
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
 
 
 @app.get("/health")
