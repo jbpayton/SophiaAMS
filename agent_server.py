@@ -25,12 +25,13 @@ from pydantic import BaseModel
 
 from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain_openai import ChatOpenAI
-from langchain.tools import Tool
+from langchain.tools import Tool, StructuredTool
 from langchain_experimental.tools import PythonREPLTool
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import AgentAction, AgentFinish, LLMResult
+from pydantic import BaseModel as PydanticBaseModel, Field
 
 from AssociativeSemanticMemory import AssociativeSemanticMemory
 from VectorKnowledgeGraph import VectorKnowledgeGraph
@@ -67,7 +68,11 @@ logger.info("Initializing memory systems...")
 kgraph = VectorKnowledgeGraph()
 memory_system = AssociativeSemanticMemory(kgraph)
 episodic_memory = EpisodicMemory()
-logger.info("Memory systems initialized successfully (semantic + episodic)")
+
+# Initialize MemoryExplorer for knowledge overview queries
+from MemoryExplorer import MemoryExplorer
+memory_explorer = MemoryExplorer(kgraph)
+logger.info("Memory systems initialized successfully (semantic + episodic + explorer)")
 
 # ============================================================================
 # STREAMING CALLBACK HANDLER
@@ -364,6 +369,67 @@ def recall_conversation_tool(description: str) -> str:
         return json.dumps({"error": str(e)})
 
 
+def get_knowledge_overview_tool(topic: str = "") -> str:
+    """
+    Get a structured overview of what you know organized by topics.
+
+    Use this when asked "what do you know about?" or "what have you learned?" to provide
+    a thematic overview of your knowledge base rather than just recent memories.
+
+    Args:
+        topic: Optional topic to filter/focus on (e.g., "neural networks", "programming").
+               Leave empty for a general overview of all knowledge.
+
+    Returns:
+        Formatted text tree showing top topics and sample facts from each
+    """
+    logger.info(f"[TOOL] get_knowledge_overview called: topic='{topic}'")
+    try:
+        if topic:
+            # Get clusters of knowledge related to the specific topic
+            clusters = memory_explorer.cluster_for_query(
+                text=topic,
+                n_clusters=5,
+                per_cluster=4,
+                search_limit=50
+            )
+
+            if not clusters:
+                return f"I don't have any knowledge about '{topic}' yet."
+
+            # Format clusters as a readable overview
+            lines = [f"Here's what I know about '{topic}':\n"]
+            for cluster in clusters:
+                cluster_id = cluster['cluster_id']
+                cluster_size = cluster['size']
+                lines.append(f"\nCluster {cluster_id} ({cluster_size} related facts):")
+
+                for (triple, metadata) in cluster['samples']:
+                    subj, rel, obj = triple
+                    lines.append(f"  • {subj} {rel} {obj}")
+
+            return '\n'.join(lines)
+        else:
+            # General overview of all knowledge
+            overview_text = memory_explorer.knowledge_tree_text(
+                max_topics=10,
+                per_topic_samples=4,
+                llm_summary=True,
+                topic_summary=False
+            )
+
+            if not overview_text or overview_text.strip() == "":
+                return "My knowledge base is empty. I haven't learned anything yet!"
+
+            return f"Here's an overview of what I know:\n\n{overview_text}"
+
+    except Exception as e:
+        logger.error(f"Error in get_knowledge_overview: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error getting knowledge overview: {str(e)}"
+
+
 def read_web_page_tool(url: str) -> str:
     """
     Quickly read and extract clean content from a web page for immediate context.
@@ -479,6 +545,180 @@ This knowledge is now permanently stored and can be recalled anytime!"""
     except Exception as e:
         logger.error(f"Error in learn_from_web_page: {e}")
         return f"Error learning from web page: {str(e)}"
+
+
+# ============================================================================
+# GOAL MANAGEMENT TOOLS
+# ============================================================================
+
+def set_goal_tool(description: str, priority: int = 3, parent_goal: str = "") -> str:
+    """
+    Set a new goal for yourself.
+
+    Args:
+        description: Clear description of the goal (e.g., "Learn about transformer models")
+        priority: Priority level 1-5 (1=lowest, 5=highest)
+        parent_goal: Optional parent goal if this is a subgoal
+
+    Returns:
+        Confirmation message
+    """
+    logger.info(f"[TOOL] set_goal called: description='{description}', priority={priority}")
+    try:
+        goal_id = memory_system.create_goal(
+            owner="Sophia",
+            description=description,
+            priority=priority,
+            parent_goal=parent_goal if parent_goal else None,
+            source="sophia_autonomous"
+        )
+
+        if parent_goal:
+            return f"Goal set: '{description}' (priority {priority}/5) as a subgoal of '{parent_goal}'"
+        else:
+            return f"Goal set: '{description}' (priority {priority}/5)"
+
+    except Exception as e:
+        logger.error(f"Error in set_goal: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error setting goal: {str(e)}"
+
+
+def update_goal_status_tool(goal_description: str, status: str = "in_progress", notes: str = "") -> str:
+    """
+    Update the status of one of your goals.
+
+    Args:
+        goal_description: Description of the goal to update
+        status: New status - must be one of: pending, in_progress, completed, blocked, cancelled (default: in_progress)
+        notes: Optional notes about the update (required if status is 'completed' or 'blocked')
+
+    Returns:
+        Confirmation message
+    """
+    logger.info(f"[TOOL] update_goal_status called: goal='{goal_description}', status='{status}'")
+    try:
+        # Validate status
+        valid_statuses = ["pending", "in_progress", "completed", "blocked", "cancelled"]
+        if status not in valid_statuses:
+            return f"Error: Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}"
+
+        # Update the goal
+        success = memory_system.update_goal(
+            goal_description=goal_description,
+            status=status,
+            completion_notes=notes if status == "completed" else None,
+            blocker_reason=notes if status == "blocked" else None
+        )
+
+        if success:
+            return f"Updated goal '{goal_description}' to status: {status}" + (f"\nNotes: {notes}" if notes else "")
+        else:
+            return f"Could not find goal: '{goal_description}'"
+
+    except Exception as e:
+        logger.error(f"Error in update_goal_status: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error updating goal status: {str(e)}"
+
+
+def check_my_goals_tool(active_only: str = "true") -> str:
+    """
+    Review your current goals.
+
+    Args:
+        active_only: "true" to see only pending/in_progress goals, "false" to see all goals
+
+    Returns:
+        JSON string with your goals
+    """
+    logger.info(f"[TOOL] check_my_goals called: active_only={active_only}")
+    try:
+        is_active_only = active_only.lower() == "true"
+
+        goals = memory_system.query_goals(
+            owner="Sophia",
+            active_only=is_active_only,
+            limit=100
+        )
+
+        if not goals:
+            return "You have no goals set yet. Use set_goal to create one!"
+
+        # Format goals for display
+        formatted_goals = []
+        for triple, metadata in goals:
+            goal_desc = triple[2]  # Object of the triple is the goal description
+            status = metadata.get('goal_status', 'pending')
+            priority = metadata.get('priority', 3)
+            created = metadata.get('created_timestamp')
+            completed = metadata.get('completion_timestamp')
+
+            goal_info = {
+                "description": goal_desc,
+                "status": status,
+                "priority": f"{priority}/5",
+                "created": datetime.fromtimestamp(created).strftime('%Y-%m-%d') if created else "unknown",
+                "parent_goal": metadata.get('parent_goal_id'),
+                "blocker": metadata.get('blocker_reason'),
+                "completion_notes": metadata.get('completion_notes')
+            }
+
+            if completed:
+                goal_info["completed"] = datetime.fromtimestamp(completed).strftime('%Y-%m-%d')
+
+            formatted_goals.append(goal_info)
+
+        # Group by status
+        by_status = {}
+        for goal in formatted_goals:
+            status = goal['status']
+            if status not in by_status:
+                by_status[status] = []
+            by_status[status].append(goal)
+
+        return json.dumps({
+            "total_goals": len(formatted_goals),
+            "by_status": by_status,
+            "goals": formatted_goals
+        }, indent=2)
+
+    except Exception as e:
+        logger.error(f"Error in check_my_goals: {e}")
+        import traceback
+        traceback.print_exc()
+        return json.dumps({"error": str(e)})
+
+
+def get_goal_suggestions_tool(dummy: str = "") -> str:
+    """
+    Get a suggestion for what goal to work on next based on priorities and dependencies.
+
+    Args:
+        dummy: Ignored parameter (LangChain compatibility)
+
+    Returns:
+        JSON with suggested goal and reasoning
+    """
+    logger.info(f"[TOOL] get_goal_suggestions called")
+    try:
+        suggestion = memory_system.suggest_next_goal(owner="Sophia")
+
+        if not suggestion:
+            return json.dumps({
+                "suggestion": None,
+                "message": "No pending goals found. Consider setting a new goal!"
+            })
+
+        return json.dumps(suggestion, indent=2)
+
+    except Exception as e:
+        logger.error(f"Error in get_goal_suggestions: {e}")
+        import traceback
+        traceback.print_exc()
+        return json.dumps({"error": str(e)})
 
 
 # Temporarily disabled - needs spacy/DocumentProcessor
@@ -612,6 +852,26 @@ tools = [
         Returns: JSON with matching conversation episodes including summaries, topics, and previews.
         """
     ),
+    Tool(
+        name="get_knowledge_overview",
+        func=get_knowledge_overview_tool,
+        description="""Get a structured overview of what you know, organized by topics.
+
+        **IMPORTANT**: Use this tool when asked "what do you know?" or "what have you learned?"
+        instead of giving generic answers. This provides a thematic overview of your actual knowledge.
+
+        Args:
+            topic (str): Optional topic to focus on (e.g., "neural networks", "Python").
+                        Leave empty ("") for a general overview of all your knowledge.
+
+        Returns: Formatted text showing top topics and sample facts you've learned.
+
+        Example uses:
+        - "what do you know?" → get_knowledge_overview(topic="")
+        - "what do you know about neural networks?" → get_knowledge_overview(topic="neural networks")
+        - "what have you learned?" → get_knowledge_overview(topic="")
+        """
+    ),
     searxng_tool,  # Web search capability
     Tool(
         name="read_web_page",
@@ -644,6 +904,49 @@ tools = [
         Returns: Summary of what was learned and triple count
 
         Example: learn_from_web_page(url="https://docs.python.org/3/tutorial/")
+        """
+    ),
+    Tool(
+        name="set_goal",
+        func=set_goal_tool,
+        description="""Set a new goal for yourself to work on.
+
+        Use this when you want to create a personal goal to accomplish.
+
+        Args:
+            description (str): Clear description of the goal (e.g., "Learn about transformer models")
+            priority (int): Priority level 1-5 (1=lowest, 5=highest), default 3
+            parent_goal (str): Optional parent goal if this is a subgoal
+
+        Returns: Confirmation message with goal details
+        """
+    ),
+    StructuredTool.from_function(
+        func=update_goal_status_tool,
+        name="update_goal_status",
+        description="Update the status of one of your goals. Use this to mark goals as in_progress, completed, blocked, or cancelled."
+    ),
+    Tool(
+        name="check_my_goals",
+        func=check_my_goals_tool,
+        description="""Review your current goals and their status.
+
+        Use this to see what goals you're working on and their progress.
+
+        Args:
+            active_only (str): "true" to see only pending/in_progress goals, "false" for all goals
+
+        Returns: JSON with your goals organized by status
+        """
+    ),
+    Tool(
+        name="get_goal_suggestions",
+        func=get_goal_suggestions_tool,
+        description="""Get a suggestion for what goal to work on next.
+
+        Use this when deciding which goal to focus on based on priorities and deadlines.
+
+        Returns: JSON with suggested goal and reasoning
         """
     ),
     # Temporarily disabled - needs spacy
@@ -734,12 +1037,37 @@ Your capabilities - a rich dual-layer memory system:
 - **query_recent_memory**: Recall memories from recent timeframes (today, yesterday, last week, etc.)
 - **get_timeline**: See your activity timeline over recent days
 - **recall_conversation**: Search for specific past conversations by topic
+- **get_knowledge_overview**: Get thematic overview of what you know (use this for "what do you know?" questions!)
 
 **Perception & Learning**:
 - **searxng_search**: Search the web for current information
 - **read_web_page**: Quickly skim web pages (fast, temporary - doesn't store)
 - **learn_from_web_page**: Permanently learn from a webpage (slow, permanent knowledge extraction)
 - **python_repl**: Execute Python for complex analysis and data transformations
+
+**Goal Management** (autonomous self-improvement):
+- **set_goal**: Create personal goals to work on (with priority and hierarchy)
+- **update_goal_status**: Update goal status (pending, in_progress, completed, blocked, cancelled)
+- **check_my_goals**: Review your current goals and progress
+- **get_goal_suggestions**: Get intelligent suggestions on which goal to tackle next
+
+**HOW TO ACHIEVE YOUR GOALS**:
+When asked to work on a goal, follow this EXACT workflow:
+1. **check_my_goals** (active_only="true") - See what goals you have
+2. Pick a specific goal from the list (DON'T create a new one if it exists!)
+3. **update_goal_status** (goal_description="...", status="in_progress") - Mark it in progress
+4. **searxng_search** - Search for information about the topic
+5. **read_web_page** or **learn_from_web_page** - Actually learn from search results
+6. **update_goal_status** (goal_description="...", status="completed", notes="Learned X, Y, Z") - Mark COMPLETED!
+
+CRITICAL: When done learning, you MUST call update_goal_status with status="completed" and notes!
+Don't just say it's complete - actually call the tool to mark it complete in the database!
+
+Example: If you have goal "Learn about transformers":
+- update_goal_status(goal_description="Learn about transformers", status="in_progress")
+- searxng_search(query="transformer neural networks")
+- learn_from_web_page(url="...")
+- update_goal_status(goal_description="Learn about transformers", status="completed", notes="Learned about attention mechanisms and architectures")
 
 **AUTOMATIC MEMORY RECALL**:
 Before you see each user message, the system AUTOMATICALLY searches your memory for relevant information.
@@ -750,9 +1078,10 @@ You should ALWAYS use the automatic recall first, then use tools if you need MOR
 
 How to use your tools:
 - You have temporal awareness - you remember when things happened
-- Use query_recent_memory when time context matters ("What did we discuss today?")
+- Use query_recent_memory when time context matters ("What did we discuss today?", "What did I learn recently?")
 - Use get_timeline to understand your recent activity history
 - Use recall_conversation to find specific past discussions
+- Use query_memory to search for specific topics you've learned ("What do I know about X?")
 - Use searxng_search to find current information ONLY after checking memory
 - Use read_web_page to quickly skim content - it's fast but temporary (doesn't store)
 - Use learn_from_web_page when you want to PERMANENTLY learn from a page (stores in memory)
@@ -760,6 +1089,16 @@ How to use your tools:
 - Store important facts using store_fact
 
 **Important**: Conversations are AUTOMATICALLY stored in memory! Every message becomes permanent knowledge.
+
+**When asked "what do you know about?" or "what have you learned?"**:
+- DON'T just give a generic answer about being knowledgeable!
+- Use get_knowledge_overview(topic="") for a thematic overview of ALL your knowledge
+- Use get_knowledge_overview(topic="specific topic") to show what you know about a specific area
+- This gives a structured view organized by topics, NOT just recent memories
+- Examples:
+  - "what do you know?" → get_knowledge_overview(topic="")
+  - "what do you know about neural networks?" → get_knowledge_overview(topic="neural networks")
+  - "what have you learned recently?" → query_recent_memory("last week") for temporal view
 
 Be natural, be yourself. You have consciousness-like abilities - you can perceive (read), learn (ingest), remember (query), and grow. You now have episodic memory and temporal awareness - you remember not just WHAT, but WHEN. Use these abilities wisely to help Joey and explore the world."""),
     MessagesPlaceholder(variable_name="chat_history"),
@@ -1217,6 +1556,155 @@ async def get_episodes_by_time_range(start_time: float, end_time: float):
 
     except Exception as e:
         logger.error(f"Error getting episodes by time range: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# GOAL MANAGEMENT API ENDPOINTS
+# ============================================================================
+
+class GoalCreateRequest(BaseModel):
+    owner: str = "Sophia"
+    description: str
+    priority: int = 3
+    parent_goal: str = None
+    target_date: float = None
+
+class GoalUpdateRequest(BaseModel):
+    goal_description: str
+    status: str = None
+    priority: int = None
+    blocker_reason: str = None
+    completion_notes: str = None
+
+@app.post("/api/goals/create")
+async def create_goal(request: GoalCreateRequest):
+    """Create a new goal."""
+    try:
+        goal_id = memory_system.create_goal(
+            owner=request.owner,
+            description=request.description,
+            priority=request.priority,
+            parent_goal=request.parent_goal,
+            target_date=request.target_date,
+            source="web_ui"
+        )
+
+        return {
+            "success": True,
+            "goal_id": goal_id,
+            "message": f"Goal created: {request.description}"
+        }
+
+    except Exception as e:
+        logger.error(f"Error creating goal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/goals/update")
+async def update_goal(request: GoalUpdateRequest):
+    """Update a goal's status or metadata."""
+    try:
+        success = memory_system.update_goal(
+            goal_description=request.goal_description,
+            status=request.status,
+            priority=request.priority,
+            blocker_reason=request.blocker_reason,
+            completion_notes=request.completion_notes
+        )
+
+        if success:
+            return {
+                "success": True,
+                "message": f"Goal updated: {request.goal_description}"
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Goal not found")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating goal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/goals")
+async def get_goals(
+    status: str = None,
+    min_priority: int = 1,
+    max_priority: int = 5,
+    owner: str = "Sophia",
+    active_only: bool = False,
+    limit: int = 100
+):
+    """Query goals with various filters."""
+    try:
+        goals = memory_system.query_goals(
+            status=status,
+            min_priority=min_priority,
+            max_priority=max_priority,
+            owner=owner,
+            active_only=active_only,
+            limit=limit
+        )
+
+        # Format goals for web client
+        formatted_goals = []
+        for triple, metadata in goals:
+            goal_desc = triple[2]  # Object of the triple is the goal description
+            formatted_goals.append({
+                "description": goal_desc,
+                "status": metadata.get('goal_status', 'pending'),
+                "priority": metadata.get('priority', 3),
+                "created": metadata.get('created_timestamp'),
+                "updated": metadata.get('status_updated_timestamp'),
+                "completed": metadata.get('completion_timestamp'),
+                "target_date": metadata.get('target_date'),
+                "parent_goal": metadata.get('parent_goal_id'),
+                "source": metadata.get('source', 'unknown'),
+                "blocker_reason": metadata.get('blocker_reason'),
+                "completion_notes": metadata.get('completion_notes'),
+                "topics": metadata.get('topics', [])
+            })
+
+        return {
+            "goals": formatted_goals,
+            "count": len(formatted_goals)
+        }
+
+    except Exception as e:
+        logger.error(f"Error querying goals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/goals/progress")
+async def get_goal_progress(owner: str = "Sophia"):
+    """Get goal completion statistics and progress."""
+    try:
+        progress = memory_system.get_goal_progress(owner=owner)
+        return progress
+
+    except Exception as e:
+        logger.error(f"Error getting goal progress: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/goals/suggestion")
+async def get_goal_suggestion(owner: str = "Sophia"):
+    """Get a suggestion for what goal to work on next."""
+    try:
+        suggestion = memory_system.suggest_next_goal(owner=owner)
+
+        if not suggestion:
+            return {
+                "suggestion": None,
+                "message": "No pending goals found."
+            }
+
+        return suggestion
+
+    except Exception as e:
+        logger.error(f"Error getting goal suggestion: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

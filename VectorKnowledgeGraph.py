@@ -34,6 +34,8 @@ class VectorKnowledgeGraph:
         if embedding_model is None:
             logging.debug("Using default embedding model")
             self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2'))
+            # Suppress progress bars globally for this model
+            self.embedding_model._show_progress_bar = False
             # Ensure embedding_dim has a default integer value
             try:
                 self.embedding_dim: int = int(os.getenv('EMBEDDING_DIM', 384))
@@ -820,8 +822,8 @@ class VectorKnowledgeGraph:
                     similarity = hit.score
 
                     if similarity >= similarity_threshold:
-                        G.add_edge(payload.get("subject"), payload.get("object"), 
-                                 weight=similarity, 
+                        G.add_edge(payload.get("subject"), payload.get("object"),
+                                 weight=similarity,
                                  label=f'Similarity: {similarity:.2f}')
 
                         object_val = payload.get("object")
@@ -841,6 +843,270 @@ class VectorKnowledgeGraph:
         nx.draw_networkx_labels(G, pos, font_size=12)
         plt.show()
         logging.info("Graph visualization completed")
+
+    # ============================================================================
+    # GOAL SYSTEM QUERY METHODS
+    # ============================================================================
+
+    def query_goals_by_status(self, status: str, limit: int = 100, return_metadata: bool = True) -> List:
+        """
+        Query goals by their status.
+
+        Args:
+            status: Goal status to filter by (pending, in_progress, completed, blocked, cancelled)
+            limit: Maximum number of results
+            return_metadata: Whether to return metadata
+
+        Returns:
+            List of goal triples matching the status
+        """
+        logging.info(f"Querying goals with status: {status}")
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Build filter for goal_status in metadata
+        status_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.goal_status",
+                    match=models.MatchValue(value=status)
+                )
+            ]
+        )
+
+        # Query with filter
+        results, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=status_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        found_triples = []
+        for hit in results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+
+        logging.info(f"Found {len(found_triples)} goals with status '{status}'")
+        return found_triples
+
+    def query_goals_by_priority(self, min_priority: int = 1, max_priority: int = 5, limit: int = 100, return_metadata: bool = True) -> List:
+        """
+        Query goals by priority range.
+
+        Args:
+            min_priority: Minimum priority (1-5)
+            max_priority: Maximum priority (1-5)
+            limit: Maximum number of results
+            return_metadata: Whether to return metadata
+
+        Returns:
+            List of goal triples in the priority range
+        """
+        logging.info(f"Querying goals with priority {min_priority}-{max_priority}")
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Build filter for priority range
+        priority_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.priority",
+                    range=models.Range(
+                        gte=min_priority,
+                        lte=max_priority
+                    )
+                )
+            ]
+        )
+
+        # Query with filter
+        results, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=priority_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        found_triples = []
+        for hit in results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+
+        logging.info(f"Found {len(found_triples)} goals in priority range {min_priority}-{max_priority}")
+        return found_triples
+
+    def query_active_goals(self, limit: int = 100, return_metadata: bool = True) -> List:
+        """
+        Query all active goals (pending or in_progress status).
+
+        Args:
+            limit: Maximum number of results
+            return_metadata: Whether to return metadata
+
+        Returns:
+            List of active goal triples
+        """
+        logging.info(f"Querying active goals")
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Build filter for active statuses
+        active_filter = models.Filter(
+            should=[
+                models.FieldCondition(
+                    key="metadata.goal_status",
+                    match=models.MatchValue(value="pending")
+                ),
+                models.FieldCondition(
+                    key="metadata.goal_status",
+                    match=models.MatchValue(value="in_progress")
+                )
+            ]
+        )
+
+        # Query with filter
+        results, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=active_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        found_triples = []
+        for hit in results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+
+        logging.info(f"Found {len(found_triples)} active goals")
+        return found_triples
+
+    def query_goal_by_description(self, description: str, similarity_threshold: float = 0.5, return_metadata: bool = True) -> Optional[Tuple]:
+        """
+        Find a specific goal by its description using semantic search.
+
+        Args:
+            description: The goal description to search for
+            similarity_threshold: Minimum similarity score
+            return_metadata: Whether to return metadata
+
+        Returns:
+            Best matching goal triple or None
+        """
+        logging.info(f"Searching for goal: '{description}'")
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return None
+
+        # Generate embedding for description
+        description_embedding = self.embedding_model.encode([description])[0]
+
+        # Search for matching goals using object vector (goal description is the object)
+        search_results = self.qdrant_client.search(
+            collection_name=self.collection_name,
+            query_vector=("object", description_embedding.tolist()),
+            limit=10,
+            score_threshold=similarity_threshold,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        # Filter for has_goal predicates and find best match
+        best_match = None
+        best_score = 0
+
+        for hit in search_results:
+            payload = hit.payload
+            if payload and payload.get("relationship") == "has_goal":
+                if hit.score > best_score:
+                    best_score = hit.score
+                    triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                    if return_metadata:
+                        metadata = payload.get("metadata", {})
+                        metadata['confidence'] = hit.score
+                        best_match = (triple, metadata)
+                    else:
+                        best_match = triple
+
+        if best_match:
+            logging.info(f"Found goal matching '{description}' with score {best_score:.3f}")
+            return best_match
+
+        logging.info(f"No goal found matching '{description}'")
+        return None
+
+    def update_goal_metadata(self, goal_description: str, updated_metadata: Dict[str, Any]) -> bool:
+        """
+        Update metadata for a goal by finding it via semantic search and updating its payload.
+
+        Args:
+            goal_description: Description of the goal to update
+            updated_metadata: New metadata values to merge
+
+        Returns:
+            True if updated successfully, False otherwise
+        """
+        logging.info(f"Updating goal metadata for: '{goal_description}'")
+
+        # Find the goal
+        goal_result = self.query_goal_by_description(goal_description, similarity_threshold=0.5, return_metadata=True)
+        if not goal_result:
+            logging.warning(f"Could not find goal: '{goal_description}'")
+            return False
+
+        triple, existing_metadata = goal_result
+
+        # Merge metadata
+        merged_metadata = {**existing_metadata, **updated_metadata}
+        merged_metadata['status_updated_timestamp'] = time.time()
+
+        # Generate the point ID (same as in add_triples)
+        import hashlib
+        subject, relationship, obj = triple
+        triple_string = f"{subject}-{relationship}-{obj}"
+        point_id = hashlib.md5(triple_string.encode()).hexdigest()
+
+        # Update the point's payload
+        self.qdrant_client.set_payload(
+            collection_name=self.collection_name,
+            payload={"metadata": merged_metadata},
+            points=[point_id]
+        )
+
+        logging.info(f"Successfully updated goal: '{goal_description}'")
+        return True
 
 def main():
     # Set up debug logging for testing

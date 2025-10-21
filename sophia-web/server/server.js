@@ -245,6 +245,52 @@ app.post('/api/conversation/process/:sessionId', async (req, res) => {
   }
 });
 
+// Goals API endpoints - proxy to agent server
+app.post('/api/goals/create', async (req, res) => {
+  try {
+    const response = await axios.post(`${AGENT_API}/api/goals/create`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/goals/update', async (req, res) => {
+  try {
+    const response = await axios.post(`${AGENT_API}/api/goals/update`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/goals', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/goals`, { params: req.query });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/goals/progress', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/goals/progress`, { params: req.query });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/goals/suggestion', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/goals/suggestion`, { params: req.query });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   const sessionId = uuidv4();

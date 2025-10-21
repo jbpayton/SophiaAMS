@@ -654,6 +654,307 @@ If one fact clearly and directly answers the input text, **include that fact ver
         logging.info(f"[ASM] Found {len(results)} triples for episode {episode_id}")
         return result_dict
 
+    # ============================================================================
+    # GOAL MANAGEMENT SYSTEM
+    # ============================================================================
+
+    def create_goal(
+        self,
+        owner: str,
+        description: str,
+        priority: int = 3,
+        parent_goal: Optional[str] = None,
+        target_date: Optional[float] = None,
+        source: str = "sophia_autonomous",
+        episode_id: Optional[str] = None,
+        topics: Optional[List[str]] = None
+    ) -> str:
+        """
+        Create a new goal in the knowledge graph.
+
+        Args:
+            owner: Who owns this goal (e.g., "Sophia", "Joey")
+            description: Natural language description of the goal
+            priority: Priority level (1=lowest, 5=highest)
+            parent_goal: Description of parent goal if this is a subgoal
+            target_date: Optional Unix timestamp for target completion
+            source: Source of the goal ("sophia_autonomous", "user_suggested", etc.)
+            episode_id: Optional episode ID if created during conversation
+            topics: Optional list of topics for the goal
+
+        Returns:
+            goal_id: Unique identifier for the goal (same as description for now)
+        """
+        logging.info(f"[GOAL] Creating goal for {owner}: '{description}'")
+
+        current_time = time.time()
+
+        # Build goal metadata
+        goal_metadata = {
+            "goal_status": "pending",
+            "priority": max(1, min(5, priority)),  # Clamp to 1-5
+            "created_timestamp": current_time,
+            "status_updated_timestamp": current_time,
+            "completion_timestamp": None,
+            "target_date": target_date,
+            "source": source,
+            "episode_id": episode_id,
+            "blocker_reason": None,
+            "completion_notes": None,
+            "parent_goal_id": parent_goal,
+            "topics": topics or ["goal", "planning"]
+        }
+
+        # Create the main goal triple
+        goal_triple = (owner, "has_goal", description)
+        self.kgraph.add_triples([goal_triple], [goal_metadata])
+
+        # If there's a parent goal, create the subgoal relationship
+        if parent_goal:
+            subgoal_metadata = {
+                "source": source,
+                "timestamp": current_time,
+                "topics": ["goal", "hierarchy"]
+            }
+            subgoal_triple = (description, "subgoal_of", parent_goal)
+            self.kgraph.add_triples([subgoal_triple], [subgoal_metadata])
+            logging.info(f"[GOAL] Linked '{description}' as subgoal of '{parent_goal}'")
+
+        logging.info(f"[GOAL] Created goal: '{description}' (priority={priority}, status=pending)")
+        return description  # Use description as goal_id
+
+    def update_goal(
+        self,
+        goal_description: str,
+        status: Optional[str] = None,
+        priority: Optional[int] = None,
+        blocker_reason: Optional[str] = None,
+        completion_notes: Optional[str] = None
+    ) -> bool:
+        """
+        Update a goal's status or metadata.
+
+        Args:
+            goal_description: Description of the goal to update
+            status: New status (pending, in_progress, completed, blocked, cancelled)
+            priority: New priority level (1-5)
+            blocker_reason: Reason if status is blocked
+            completion_notes: Notes when completing the goal
+
+        Returns:
+            True if successful, False if goal not found
+        """
+        logging.info(f"[GOAL] Updating goal: '{goal_description}'")
+
+        # Build update metadata
+        updates = {}
+        current_time = time.time()
+
+        if status:
+            updates['goal_status'] = status
+            updates['status_updated_timestamp'] = current_time
+            if status == "completed":
+                updates['completion_timestamp'] = current_time
+            logging.info(f"[GOAL] Setting status to: {status}")
+
+        if priority is not None:
+            updates['priority'] = max(1, min(5, priority))
+
+        if blocker_reason:
+            updates['blocker_reason'] = blocker_reason
+
+        if completion_notes:
+            updates['completion_notes'] = completion_notes
+
+        # Update using VectorKnowledgeGraph method
+        success = self.kgraph.update_goal_metadata(goal_description, updates)
+
+        if success:
+            logging.info(f"[GOAL] Successfully updated goal: '{goal_description}'")
+        else:
+            logging.warning(f"[GOAL] Failed to update goal: '{goal_description}'")
+
+        return success
+
+    def query_goals(
+        self,
+        status: Optional[str] = None,
+        min_priority: int = 1,
+        max_priority: int = 5,
+        owner: Optional[str] = None,
+        active_only: bool = False,
+        limit: int = 100
+    ) -> List[Tuple]:
+        """
+        Query goals with various filters.
+
+        Args:
+            status: Filter by specific status
+            min_priority: Minimum priority level
+            max_priority: Maximum priority level
+            owner: Filter by goal owner
+            active_only: Only return pending/in_progress goals
+            limit: Maximum number of results
+
+        Returns:
+            List of (triple, metadata) tuples for matching goals
+        """
+        logging.info(f"[GOAL] Querying goals (status={status}, active_only={active_only})")
+
+        if active_only:
+            results = self.kgraph.query_active_goals(limit=limit, return_metadata=True)
+        elif status:
+            results = self.kgraph.query_goals_by_status(status, limit=limit, return_metadata=True)
+        else:
+            # Query by priority range
+            results = self.kgraph.query_goals_by_priority(
+                min_priority=min_priority,
+                max_priority=max_priority,
+                limit=limit,
+                return_metadata=True
+            )
+
+        # Filter by owner if specified
+        if owner and results:
+            results = [(t, m) for t, m in results if t[0].lower() == owner.lower()]
+
+        # Filter to only has_goal predicates
+        results = [(t, m) for t, m in results if t[1] == "has_goal"]
+
+        logging.info(f"[GOAL] Found {len(results)} matching goals")
+        return results
+
+    def get_goal_progress(self, owner: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get statistics on goal completion and progress.
+
+        Args:
+            owner: Optional owner to filter by
+
+        Returns:
+            Dictionary with goal statistics
+        """
+        logging.info(f"[GOAL] Calculating goal progress for owner: {owner or 'all'}")
+
+        # Query all goals
+        all_goals = self.query_goals(owner=owner, min_priority=1, max_priority=5, limit=1000)
+
+        stats = {
+            "total_goals": len(all_goals),
+            "by_status": {
+                "pending": 0,
+                "in_progress": 0,
+                "completed": 0,
+                "blocked": 0,
+                "cancelled": 0
+            },
+            "by_priority": {
+                1: 0,
+                2: 0,
+                3: 0,
+                4: 0,
+                5: 0
+            },
+            "completion_rate": 0.0,
+            "active_count": 0,
+            "recent_completions": []
+        }
+
+        for triple, metadata in all_goals:
+            status = metadata.get('goal_status', 'pending')
+            priority = metadata.get('priority', 3)
+
+            stats['by_status'][status] = stats['by_status'].get(status, 0) + 1
+            stats['by_priority'][priority] = stats['by_priority'].get(priority, 0) + 1
+
+            if status in ["pending", "in_progress"]:
+                stats['active_count'] += 1
+
+            if status == "completed":
+                completion_time = metadata.get('completion_timestamp')
+                if completion_time:
+                    stats['recent_completions'].append({
+                        "description": triple[2],
+                        "completed_at": completion_time
+                    })
+
+        # Calculate completion rate
+        if stats['total_goals'] > 0:
+            stats['completion_rate'] = stats['by_status']['completed'] / stats['total_goals']
+
+        # Sort recent completions by time (most recent first)
+        stats['recent_completions'].sort(key=lambda x: x['completed_at'], reverse=True)
+        stats['recent_completions'] = stats['recent_completions'][:10]  # Keep top 10
+
+        logging.info(f"[GOAL] Progress: {stats['by_status']['completed']}/{stats['total_goals']} completed ({stats['completion_rate']*100:.1f}%)")
+        return stats
+
+    def suggest_next_goal(self, owner: str = "Sophia") -> Optional[Dict[str, Any]]:
+        """
+        Suggest the next goal to work on based on priority, dependencies, and status.
+
+        Args:
+            owner: Goal owner to suggest for
+
+        Returns:
+            Dictionary with suggested goal and reasoning, or None
+        """
+        logging.info(f"[GOAL] Suggesting next goal for {owner}")
+
+        # Get all pending goals
+        pending_goals = self.query_goals(owner=owner, status="pending", limit=100)
+
+        if not pending_goals:
+            logging.info("[GOAL] No pending goals found")
+            return None
+
+        # Score each goal based on priority and dependencies
+        scored_goals = []
+
+        for triple, metadata in pending_goals:
+            goal_desc = triple[2]
+            priority = metadata.get('priority', 3)
+            target_date = metadata.get('target_date')
+
+            # Base score is priority
+            score = priority * 10
+
+            # Boost if target date is soon
+            if target_date:
+                days_until = (target_date - time.time()) / (24 * 3600)
+                if days_until < 7:  # Less than a week away
+                    score += 15
+                elif days_until < 30:  # Less than a month away
+                    score += 5
+
+            # Check if dependencies are met (look for depends_on relationships)
+            # For now, we'll assume no blockers if not explicitly blocked
+
+            scored_goals.append({
+                "goal": goal_desc,
+                "score": score,
+                "priority": priority,
+                "metadata": metadata,
+                "triple": triple
+            })
+
+        # Sort by score descending
+        scored_goals.sort(key=lambda x: x['score'], reverse=True)
+
+        if scored_goals:
+            top_goal = scored_goals[0]
+            logging.info(f"[GOAL] Suggested goal: '{top_goal['goal']}' (score={top_goal['score']})")
+
+            return {
+                "goal_description": top_goal['goal'],
+                "priority": top_goal['priority'],
+                "score": top_goal['score'],
+                "reasoning": f"Highest priority ({top_goal['priority']}/5) pending goal",
+                "metadata": top_goal['metadata']
+            }
+
+        return None
+
     def get_explorer(self):
         """Return a MemoryExplorer bound to the current knowledge graph."""
         from MemoryExplorer import MemoryExplorer  # local import to avoid circular dependency

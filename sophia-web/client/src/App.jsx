@@ -3,7 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import ChatPage from './pages/ChatPage'
 import GraphPage from './pages/GraphPage'
 import AdminPage from './pages/AdminPage'
-import { Brain, MessageSquare, Network, Settings } from 'lucide-react'
+import GoalsPage from './pages/GoalsPage'
+import { Brain, MessageSquare, Network, Settings, Target } from 'lucide-react'
 import './App.css'
 
 function App() {
@@ -38,6 +39,15 @@ function App() {
             </Link>
 
             <Link
+              to="/goals"
+              className={`nav-link ${currentPath === '/goals' ? 'active' : ''}`}
+              onClick={() => setCurrentPath('/goals')}
+            >
+              <Target size={20} />
+              <span>Goals</span>
+            </Link>
+
+            <Link
               to="/admin"
               className={`nav-link ${currentPath === '/admin' ? 'active' : ''}`}
               onClick={() => setCurrentPath('/admin')}
@@ -52,6 +62,7 @@ function App() {
           <Routes>
             <Route path="/" element={<ChatPage />} />
             <Route path="/graph" element={<GraphPage />} />
+            <Route path="/goals" element={<GoalsPage />} />
             <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>
