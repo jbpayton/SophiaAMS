@@ -667,7 +667,10 @@ If one fact clearly and directly answers the input text, **include that fact ver
         target_date: Optional[float] = None,
         source: str = "sophia_autonomous",
         episode_id: Optional[str] = None,
-        topics: Optional[List[str]] = None
+        topics: Optional[List[str]] = None,
+        goal_type: str = "standard",
+        is_forever_goal: bool = False,
+        depends_on: Optional[List[str]] = None
     ) -> str:
         """
         Create a new goal in the knowledge graph.
@@ -681,17 +684,20 @@ If one fact clearly and directly answers the input text, **include that fact ver
             source: Source of the goal ("sophia_autonomous", "user_suggested", etc.)
             episode_id: Optional episode ID if created during conversation
             topics: Optional list of topics for the goal
+            goal_type: Type of goal ("standard", "instrumental", "derived")
+            is_forever_goal: Whether this is an ongoing/instrumental goal (never completes)
+            depends_on: Optional list of goal descriptions this goal depends on
 
         Returns:
             goal_id: Unique identifier for the goal (same as description for now)
         """
-        logging.info(f"[GOAL] Creating goal for {owner}: '{description}'")
+        logging.info(f"[GOAL] Creating goal for {owner}: '{description}' (type={goal_type}, forever={is_forever_goal})")
 
         current_time = time.time()
 
         # Build goal metadata
         goal_metadata = {
-            "goal_status": "pending",
+            "goal_status": "ongoing" if is_forever_goal else "pending",
             "priority": max(1, min(5, priority)),  # Clamp to 1-5
             "created_timestamp": current_time,
             "status_updated_timestamp": current_time,
@@ -702,6 +708,8 @@ If one fact clearly and directly answers the input text, **include that fact ver
             "blocker_reason": None,
             "completion_notes": None,
             "parent_goal_id": parent_goal,
+            "goal_type": goal_type,
+            "is_forever_goal": is_forever_goal,
             "topics": topics or ["goal", "planning"]
         }
 
@@ -720,7 +728,36 @@ If one fact clearly and directly answers the input text, **include that fact ver
             self.kgraph.add_triples([subgoal_triple], [subgoal_metadata])
             logging.info(f"[GOAL] Linked '{description}' as subgoal of '{parent_goal}'")
 
-        logging.info(f"[GOAL] Created goal: '{description}' (priority={priority}, status=pending)")
+        # Create dependency relationships
+        if depends_on:
+            dependency_triples = []
+            dependency_metadata = []
+            for dependency in depends_on:
+                dep_triple = (description, "depends_on", dependency)
+                dep_metadata = {
+                    "source": source,
+                    "timestamp": current_time,
+                    "topics": ["goal", "dependency"]
+                }
+                dependency_triples.append(dep_triple)
+                dependency_metadata.append(dep_metadata)
+
+            if dependency_triples:
+                self.kgraph.add_triples(dependency_triples, dependency_metadata)
+                logging.info(f"[GOAL] Created {len(dependency_triples)} dependency relationships for '{description}'")
+
+        # If this is a derived goal, link it to instrumental parent
+        if goal_type == "derived" and parent_goal:
+            derived_metadata = {
+                "source": source,
+                "timestamp": current_time,
+                "topics": ["goal", "derived"]
+            }
+            derived_triple = (description, "derived_from", parent_goal)
+            self.kgraph.add_triples([derived_triple], [derived_metadata])
+            logging.info(f"[GOAL] Linked '{description}' as derived from '{parent_goal}'")
+
+        logging.info(f"[GOAL] Created goal: '{description}' (priority={priority}, status={'ongoing' if is_forever_goal else 'pending'})")
         return description  # Use description as goal_id
 
     def update_goal(
@@ -732,35 +769,62 @@ If one fact clearly and directly answers the input text, **include that fact ver
         completion_notes: Optional[str] = None
     ) -> bool:
         """
-        Update a goal's status or metadata.
+        Update a goal's status or metadata with dependency checking.
 
         Args:
             goal_description: Description of the goal to update
-            status: New status (pending, in_progress, completed, blocked, cancelled)
+            status: New status (pending, in_progress, completed, blocked, cancelled, ongoing)
             priority: New priority level (1-5)
             blocker_reason: Reason if status is blocked
             completion_notes: Notes when completing the goal
 
         Returns:
-            True if successful, False if goal not found
+            True if successful, False if goal not found or blocked by dependencies
         """
         logging.info(f"[GOAL] Updating goal: '{goal_description}'")
+
+        # Get current goal metadata first
+        goal_result = self.kgraph.query_goal_by_description(goal_description, return_metadata=True)
+        if not goal_result:
+            logging.warning(f"[GOAL] Goal not found: '{goal_description}'")
+            return False
+
+        _, current_metadata = goal_result
+        is_forever_goal = current_metadata.get('is_forever_goal', False)
 
         # Build update metadata
         updates = {}
         current_time = time.time()
 
         if status:
-            updates['goal_status'] = status
+            # Prevent completing forever goals
+            if is_forever_goal and status == "completed":
+                logging.warning(f"[GOAL] Cannot complete forever goal: '{goal_description}'")
+                updates['goal_status'] = "ongoing"
+                updates['blocker_reason'] = "This is an instrumental/forever goal - it cannot be completed"
+            else:
+                # Check dependencies if trying to complete
+                if status == "completed":
+                    unmet_deps = self._check_unmet_dependencies(goal_description)
+                    if unmet_deps:
+                        logging.warning(f"[GOAL] Cannot complete goal due to unmet dependencies: {unmet_deps}")
+                        updates['goal_status'] = "blocked"
+                        updates['blocker_reason'] = f"Blocked by pending dependencies: {', '.join(unmet_deps)}"
+                    else:
+                        updates['goal_status'] = status
+                        updates['completion_timestamp'] = current_time
+                else:
+                    updates['goal_status'] = status
+                    if status == "completed":
+                        updates['completion_timestamp'] = current_time
+
             updates['status_updated_timestamp'] = current_time
-            if status == "completed":
-                updates['completion_timestamp'] = current_time
-            logging.info(f"[GOAL] Setting status to: {status}")
+            logging.info(f"[GOAL] Setting status to: {updates.get('goal_status', status)}")
 
         if priority is not None:
             updates['priority'] = max(1, min(5, priority))
 
-        if blocker_reason:
+        if blocker_reason and 'blocker_reason' not in updates:  # Don't override dependency blocker
             updates['blocker_reason'] = blocker_reason
 
         if completion_notes:
@@ -775,6 +839,46 @@ If one fact clearly and directly answers the input text, **include that fact ver
             logging.warning(f"[GOAL] Failed to update goal: '{goal_description}'")
 
         return success
+
+    def _check_unmet_dependencies(self, goal_description: str) -> List[str]:
+        """
+        Check if a goal has any unmet dependencies.
+
+        Args:
+            goal_description: Description of the goal to check
+
+        Returns:
+            List of descriptions of unmet dependency goals
+        """
+        # Find all dependencies for this goal
+        try:
+            dependency_triples = self.kgraph.build_graph_from_subject_relationship(
+                (goal_description, "depends_on"),
+                similarity_threshold=0.9,
+                max_results=50,
+                return_metadata=True
+            )
+
+            unmet_dependencies = []
+            for triple, _ in dependency_triples:
+                dependency_desc = triple[2]  # The object is the dependency goal description
+
+                # Check status of dependency
+                dep_result = self.kgraph.query_goal_by_description(dependency_desc, return_metadata=True)
+                if dep_result:
+                    _, dep_metadata = dep_result
+                    dep_status = dep_metadata.get('goal_status', 'pending')
+
+                    # Dependency is only met if completed or cancelled
+                    if dep_status not in ['completed', 'cancelled']:
+                        unmet_dependencies.append(dependency_desc)
+                        logging.debug(f"[GOAL] Unmet dependency: '{dependency_desc}' (status={dep_status})")
+
+            return unmet_dependencies
+
+        except Exception as e:
+            logging.error(f"[GOAL] Error checking dependencies: {e}")
+            return []
 
     def query_goals(
         self,
@@ -891,7 +995,8 @@ If one fact clearly and directly answers the input text, **include that fact ver
 
     def suggest_next_goal(self, owner: str = "Sophia") -> Optional[Dict[str, Any]]:
         """
-        Suggest the next goal to work on based on priority, dependencies, and status.
+        Suggest the next goal to work on based on priority, dependencies, goal type, and status.
+        Derived goals from instrumental/forever goals are prioritized.
 
         Args:
             owner: Goal owner to suggest for
@@ -908,16 +1013,29 @@ If one fact clearly and directly answers the input text, **include that fact ver
             logging.info("[GOAL] No pending goals found")
             return None
 
-        # Score each goal based on priority and dependencies
+        # Score each goal based on priority, dependencies, and type
         scored_goals = []
 
         for triple, metadata in pending_goals:
             goal_desc = triple[2]
             priority = metadata.get('priority', 3)
             target_date = metadata.get('target_date')
+            goal_type = metadata.get('goal_type', 'standard')
+
+            # Check if this goal has unmet dependencies
+            unmet_deps = self._check_unmet_dependencies(goal_desc)
+            if unmet_deps:
+                # Skip goals with unmet dependencies
+                logging.debug(f"[GOAL] Skipping '{goal_desc}' - unmet dependencies: {unmet_deps}")
+                continue
 
             # Base score is priority
             score = priority * 10
+
+            # Boost derived goals (from instrumental parents)
+            if goal_type == "derived":
+                score += 20
+                logging.debug(f"[GOAL] Boosting derived goal '{goal_desc}' (+20)")
 
             # Boost if target date is soon
             if target_date:
@@ -927,13 +1045,11 @@ If one fact clearly and directly answers the input text, **include that fact ver
                 elif days_until < 30:  # Less than a month away
                     score += 5
 
-            # Check if dependencies are met (look for depends_on relationships)
-            # For now, we'll assume no blockers if not explicitly blocked
-
             scored_goals.append({
                 "goal": goal_desc,
                 "score": score,
                 "priority": priority,
+                "goal_type": goal_type,
                 "metadata": metadata,
                 "triple": triple
             })
@@ -943,17 +1059,103 @@ If one fact clearly and directly answers the input text, **include that fact ver
 
         if scored_goals:
             top_goal = scored_goals[0]
+
+            # Build reasoning message
+            reasoning_parts = [f"Priority {top_goal['priority']}/5"]
+            if top_goal['goal_type'] == "derived":
+                reasoning_parts.append("derived from instrumental goal")
+            reasoning = ", ".join(reasoning_parts) + " - dependencies met"
+
             logging.info(f"[GOAL] Suggested goal: '{top_goal['goal']}' (score={top_goal['score']})")
 
             return {
                 "goal_description": top_goal['goal'],
                 "priority": top_goal['priority'],
                 "score": top_goal['score'],
-                "reasoning": f"Highest priority ({top_goal['priority']}/5) pending goal",
+                "goal_type": top_goal['goal_type'],
+                "reasoning": reasoning,
                 "metadata": top_goal['metadata']
             }
 
         return None
+
+    def get_active_goals_for_prompt(self, owner: str = "Sophia", limit: int = 10) -> str:
+        """
+        Get a formatted string of active goals suitable for including in the agent prompt.
+        Returns instrumental/forever goals and high-priority active goals.
+
+        Args:
+            owner: Goal owner to get goals for
+            limit: Maximum number of goals to return
+
+        Returns:
+            Formatted string of goals for prompt inclusion
+        """
+        logging.info(f"[GOAL] Getting active goals for prompt (owner={owner})")
+
+        # Get instrumental/forever goals
+        instrumental_goals = self.kgraph.query_instrumental_goals(limit=50, return_metadata=True)
+        # Filter by owner and has_goal predicate
+        instrumental_goals = [(t, m) for t, m in instrumental_goals if t[0].lower() == owner.lower() and t[1] == "has_goal"]
+
+        # Get high-priority active goals (priority 4-5)
+        high_priority_goals = self.kgraph.query_high_priority_goals(min_priority=4, limit=50, return_metadata=True)
+        # Filter by owner and has_goal predicate
+        high_priority_goals = [(t, m) for t, m in high_priority_goals if t[0].lower() == owner.lower() and t[1] == "has_goal"]
+
+        # Combine and deduplicate
+        all_goals = {}
+        for triple, metadata in instrumental_goals:
+            goal_desc = triple[2]
+            all_goals[goal_desc] = {
+                "description": goal_desc,
+                "priority": metadata.get('priority', 3),
+                "status": metadata.get('goal_status', 'pending'),
+                "type": metadata.get('goal_type', 'standard'),
+                "is_forever": metadata.get('is_forever_goal', False)
+            }
+
+        for triple, metadata in high_priority_goals:
+            goal_desc = triple[2]
+            if goal_desc not in all_goals:  # Don't duplicate
+                all_goals[goal_desc] = {
+                    "description": goal_desc,
+                    "priority": metadata.get('priority', 3),
+                    "status": metadata.get('goal_status', 'pending'),
+                    "type": metadata.get('goal_type', 'standard'),
+                    "is_forever": metadata.get('is_forever_goal', False)
+                }
+
+        # Sort by priority descending, then by type (instrumental first)
+        sorted_goals = sorted(
+            all_goals.values(),
+            key=lambda g: (g['priority'], 1 if g['is_forever'] else 0),
+            reverse=True
+        )[:limit]
+
+        if not sorted_goals:
+            logging.info("[GOAL] No active goals found for prompt")
+            return ""
+
+        # Format goals as bullet list
+        goal_lines = []
+        for goal in sorted_goals:
+            type_label = ""
+            if goal['is_forever']:
+                type_label = " [INSTRUMENTAL/ONGOING]"
+            elif goal['type'] == "derived":
+                type_label = " [DERIVED]"
+
+            status_label = goal['status'].upper() if goal['status'] != "pending" else ""
+            priority_stars = "★" * goal['priority']
+
+            goal_lines.append(
+                f"- [{priority_stars}] {goal['description']}{type_label} {f'({status_label})' if status_label else ''}".strip()
+            )
+
+        formatted_goals = "\n".join(goal_lines)
+        logging.info(f"[GOAL] Returning {len(sorted_goals)} goals for prompt")
+        return formatted_goals
 
     def get_explorer(self):
         """Return a MemoryExplorer bound to the current knowledge graph."""

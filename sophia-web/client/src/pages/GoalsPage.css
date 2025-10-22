@@ -488,3 +488,28 @@
 .action-btn.danger:hover:not(:disabled) {
   background: #4b5563;
 }
+
+/* Goal Type Badges */
+.type-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.type-badge.forever {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  color: #fff;
+}
+
+.type-badge.instrumental {
+  background: #fbbf24;
+  color: #1a1a1a;
+}
+
+.type-badge.derived {
+  background: #10b981;
+  color: #fff;
+}

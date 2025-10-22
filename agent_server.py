@@ -585,6 +585,14 @@ def set_goal_tool(description: str, priority: int = 3, parent_goal: str = "") ->
         return f"Error setting goal: {str(e)}"
 
 
+# Pydantic schema for update_goal_status tool
+class UpdateGoalStatusInput(PydanticBaseModel):
+    """Input schema for updating goal status."""
+    goal_description: str = Field(..., description="Description of the goal to update")
+    status: str = Field(default="in_progress", description="New status - must be one of: pending, in_progress, completed, blocked, cancelled")
+    notes: str = Field(default="", description="Optional notes about the update (required if status is 'completed' or 'blocked')")
+
+
 def update_goal_status_tool(goal_description: str, status: str = "in_progress", notes: str = "") -> str:
     """
     Update the status of one of your goals.
@@ -924,7 +932,8 @@ tools = [
     StructuredTool.from_function(
         func=update_goal_status_tool,
         name="update_goal_status",
-        description="Update the status of one of your goals. Use this to mark goals as in_progress, completed, blocked, or cancelled."
+        description="Update the status of one of your goals. Use this to mark goals as in_progress, completed, blocked, or cancelled.",
+        args_schema=UpdateGoalStatusInput
     ),
     Tool(
         name="check_my_goals",
@@ -1132,7 +1141,7 @@ sessions: Dict[str, AgentExecutor] = {}
 
 def auto_recall_memories(user_input: str, limit: int = 10) -> str:
     """
-    Automatically retrieve relevant memories based on user input.
+    Automatically retrieve relevant memories AND active goals based on user input.
     This happens BEFORE the LLM sees the input, so memories are injected into context.
 
     Args:
@@ -1140,35 +1149,46 @@ def auto_recall_memories(user_input: str, limit: int = 10) -> str:
         limit: Maximum number of triples to recall
 
     Returns:
-        Formatted string with recalled memories
+        Formatted string with recalled memories and active goals
     """
     try:
         # Query semantic memory for relevant triples
         results = memory_system.query_related_information(user_input, limit=limit)
 
-        if not results or not isinstance(results, dict):
-            return "No relevant memories found."
-
-        triples = results.get('triples', [])
-        if not triples:
-            return "No relevant memories found."
-
-        # Format memories in a clean, readable way
         memory_lines = []
-        memory_lines.append(f"Found {len(triples)} relevant memories:\n")
 
-        for i, triple_data in enumerate(triples[:limit], 1):
-            if isinstance(triple_data, (list, tuple)) and len(triple_data) >= 2:
-                triple, metadata = triple_data
-                subject, predicate, obj = triple
+        # Add memories section
+        if results and isinstance(results, dict):
+            triples = results.get('triples', [])
+            if triples:
+                memory_lines.append(f"Found {len(triples)} relevant memories:\n")
 
-                # Format triple
-                memory_lines.append(f"{i}. {subject} {predicate} {obj}")
+                for i, triple_data in enumerate(triples[:limit], 1):
+                    if isinstance(triple_data, (list, tuple)) and len(triple_data) >= 2:
+                        triple, metadata = triple_data
+                        subject, predicate, obj = triple
 
-                # Add topics if available
-                topics = metadata.get('topics', [])
-                if topics:
-                    memory_lines.append(f"   Topics: {', '.join(topics[:3])}")
+                        # Format triple
+                        memory_lines.append(f"{i}. {subject} {predicate} {obj}")
+
+                        # Add topics if available
+                        topics = metadata.get('topics', [])
+                        if topics:
+                            memory_lines.append(f"   Topics: {', '.join(topics[:3])}")
+            else:
+                memory_lines.append("No relevant memories found.")
+        else:
+            memory_lines.append("No relevant memories found.")
+
+        # Add active goals section
+        try:
+            active_goals = memory_system.get_active_goals_for_prompt(owner="Sophia", limit=10)
+            if active_goals:
+                memory_lines.append("\n\n=== YOUR ACTIVE GOALS ===")
+                memory_lines.append(active_goals)
+                memory_lines.append("=== END GOALS ===")
+        except Exception as e:
+            logger.error(f"Error retrieving active goals for prompt: {e}")
 
         return '\n'.join(memory_lines)
 
@@ -1569,6 +1589,9 @@ class GoalCreateRequest(BaseModel):
     priority: int = 3
     parent_goal: str = None
     target_date: float = None
+    goal_type: str = "standard"
+    is_forever_goal: bool = False
+    depends_on: list = None
 
 class GoalUpdateRequest(BaseModel):
     goal_description: str
@@ -1579,7 +1602,7 @@ class GoalUpdateRequest(BaseModel):
 
 @app.post("/api/goals/create")
 async def create_goal(request: GoalCreateRequest):
-    """Create a new goal."""
+    """Create a new goal with support for goal types, forever goals, and dependencies."""
     try:
         goal_id = memory_system.create_goal(
             owner=request.owner,
@@ -1587,13 +1610,18 @@ async def create_goal(request: GoalCreateRequest):
             priority=request.priority,
             parent_goal=request.parent_goal,
             target_date=request.target_date,
+            goal_type=request.goal_type,
+            is_forever_goal=request.is_forever_goal,
+            depends_on=request.depends_on,
             source="web_ui"
         )
 
         return {
             "success": True,
             "goal_id": goal_id,
-            "message": f"Goal created: {request.description}"
+            "message": f"Goal created: {request.description}",
+            "goal_type": request.goal_type,
+            "is_forever_goal": request.is_forever_goal
         }
 
     except Exception as e:
@@ -1664,7 +1692,9 @@ async def get_goals(
                 "source": metadata.get('source', 'unknown'),
                 "blocker_reason": metadata.get('blocker_reason'),
                 "completion_notes": metadata.get('completion_notes'),
-                "topics": metadata.get('topics', [])
+                "topics": metadata.get('topics', []),
+                "goal_type": metadata.get('goal_type', 'standard'),
+                "is_forever_goal": metadata.get('is_forever_goal', False)
             })
 
         return {

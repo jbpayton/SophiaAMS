@@ -25,6 +25,9 @@ function GoalsPage() {
   const [newGoalDescription, setNewGoalDescription] = useState('')
   const [newGoalPriority, setNewGoalPriority] = useState(3)
   const [newGoalParent, setNewGoalParent] = useState('')
+  const [newGoalType, setNewGoalType] = useState('standard')
+  const [newIsForeverGoal, setNewIsForeverGoal] = useState(false)
+  const [newDependsOn, setNewDependsOn] = useState([])
 
   useEffect(() => {
     fetchGoals()
@@ -89,7 +92,10 @@ function GoalsPage() {
         body: JSON.stringify({
           description: newGoalDescription,
           priority: newGoalPriority,
-          parent_goal: newGoalParent || null
+          parent_goal: newGoalParent || null,
+          goal_type: newGoalType,
+          is_forever_goal: newIsForeverGoal,
+          depends_on: newDependsOn.length > 0 ? newDependsOn : null
         })
       })
 
@@ -97,6 +103,9 @@ function GoalsPage() {
         setNewGoalDescription('')
         setNewGoalPriority(3)
         setNewGoalParent('')
+        setNewGoalType('standard')
+        setNewIsForeverGoal(false)
+        setNewDependsOn([])
         setShowCreateForm(false)
         fetchGoals()
         fetchProgress()
@@ -305,14 +314,44 @@ function GoalsPage() {
                 />
               </div>
               <div className="form-group">
+                <label>Goal Type</label>
+                <select
+                  value={newGoalType}
+                  onChange={(e) => setNewGoalType(e.target.value)}
+                  className="form-input"
+                >
+                  <option value="standard">Standard</option>
+                  <option value="instrumental">Instrumental</option>
+                  <option value="derived">Derived</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
                 <label>Parent Goal (optional)</label>
-                <input
-                  type="text"
+                <select
                   value={newGoalParent}
                   onChange={(e) => setNewGoalParent(e.target.value)}
-                  placeholder="Parent goal description"
                   className="form-input"
-                />
+                >
+                  <option value="">None</option>
+                  {goals.filter(g => g.status !== 'completed' && g.status !== 'cancelled').map((goal, idx) => (
+                    <option key={idx} value={goal.description}>
+                      {goal.description.substring(0, 50)}{goal.description.length > 50 ? '...' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', paddingTop: '20px' }}>
+                <label style={{ marginBottom: 0, marginRight: '10px' }}>
+                  <input
+                    type="checkbox"
+                    checked={newIsForeverGoal}
+                    onChange={(e) => setNewIsForeverGoal(e.target.checked)}
+                    style={{ marginRight: '5px' }}
+                  />
+                  Forever/Ongoing Goal
+                </label>
               </div>
             </div>
             <div className="form-actions">
@@ -416,6 +455,19 @@ function GoalsPage() {
 function GoalCard({ goal, onStatusChange, getPriorityColor, formatTimestamp }) {
   const [showDetails, setShowDetails] = useState(false)
 
+  const getGoalTypeBadge = (type, isForever) => {
+    if (isForever) {
+      return <span className="type-badge forever">FOREVER</span>
+    }
+    if (type === 'instrumental') {
+      return <span className="type-badge instrumental">INSTRUMENTAL</span>
+    }
+    if (type === 'derived') {
+      return <span className="type-badge derived">DERIVED</span>
+    }
+    return null
+  }
+
   return (
     <div className="goal-card">
       <div className="goal-main" onClick={() => setShowDetails(!showDetails)}>
@@ -428,6 +480,7 @@ function GoalCard({ goal, onStatusChange, getPriorityColor, formatTimestamp }) {
             >
               P{goal.priority}
             </span>
+            {getGoalTypeBadge(goal.goal_type, goal.is_forever_goal)}
           </div>
         </div>
         {goal.parent_goal && (

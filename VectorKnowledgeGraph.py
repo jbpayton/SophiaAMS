@@ -958,7 +958,7 @@ class VectorKnowledgeGraph:
 
     def query_active_goals(self, limit: int = 100, return_metadata: bool = True) -> List:
         """
-        Query all active goals (pending or in_progress status).
+        Query all active goals (pending, in_progress, or ongoing status).
 
         Args:
             limit: Maximum number of results
@@ -974,7 +974,7 @@ class VectorKnowledgeGraph:
             logging.warning(f"Collection '{self.collection_name}' is empty.")
             return []
 
-        # Build filter for active statuses
+        # Build filter for active statuses (including ongoing for forever goals)
         active_filter = models.Filter(
             should=[
                 models.FieldCondition(
@@ -984,6 +984,10 @@ class VectorKnowledgeGraph:
                 models.FieldCondition(
                     key="metadata.goal_status",
                     match=models.MatchValue(value="in_progress")
+                ),
+                models.FieldCondition(
+                    key="metadata.goal_status",
+                    match=models.MatchValue(value="ongoing")
                 )
             ]
         )
@@ -1009,6 +1013,128 @@ class VectorKnowledgeGraph:
                     found_triples.append(triple)
 
         logging.info(f"Found {len(found_triples)} active goals")
+        return found_triples
+
+    def query_instrumental_goals(self, limit: int = 100, return_metadata: bool = True) -> List:
+        """
+        Query all instrumental/forever goals.
+
+        Args:
+            limit: Maximum number of results
+            return_metadata: Whether to return metadata
+
+        Returns:
+            List of instrumental goal triples
+        """
+        logging.info(f"Querying instrumental/forever goals")
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Build filter for forever goals
+        forever_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.is_forever_goal",
+                    match=models.MatchValue(value=True)
+                )
+            ]
+        )
+
+        # Query with filter
+        results, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=forever_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        found_triples = []
+        for hit in results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+
+        logging.info(f"Found {len(found_triples)} instrumental/forever goals")
+        return found_triples
+
+    def query_high_priority_goals(self, min_priority: int = 4, limit: int = 100, return_metadata: bool = True) -> List:
+        """
+        Query high-priority goals (typically priority 4-5).
+
+        Args:
+            min_priority: Minimum priority level (default 4)
+            limit: Maximum number of results
+            return_metadata: Whether to return metadata
+
+        Returns:
+            List of high-priority goal triples
+        """
+        logging.info(f"Querying high-priority goals (>= {min_priority})")
+
+        collection_info = self.qdrant_client.get_collection(self.collection_name)
+        if collection_info.points_count == 0:
+            logging.warning(f"Collection '{self.collection_name}' is empty.")
+            return []
+
+        # Build filter for high priority and active status
+        high_priority_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.priority",
+                    range=models.Range(
+                        gte=min_priority
+                    )
+                ),
+                # Only active goals
+                models.Filter(
+                    should=[
+                        models.FieldCondition(
+                            key="metadata.goal_status",
+                            match=models.MatchValue(value="pending")
+                        ),
+                        models.FieldCondition(
+                            key="metadata.goal_status",
+                            match=models.MatchValue(value="in_progress")
+                        ),
+                        models.FieldCondition(
+                            key="metadata.goal_status",
+                            match=models.MatchValue(value="ongoing")
+                        )
+                    ]
+                )
+            ]
+        )
+
+        # Query with filter
+        results, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=high_priority_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        found_triples = []
+        for hit in results:
+            payload = hit.payload
+            if payload:
+                triple = (payload.get("subject"), payload.get("relationship"), payload.get("object"))
+                if return_metadata:
+                    metadata = payload.get("metadata", {})
+                    found_triples.append((triple, metadata))
+                else:
+                    found_triples.append(triple)
+
+        logging.info(f"Found {len(found_triples)} high-priority goals")
         return found_triples
 
     def query_goal_by_description(self, description: str, similarity_threshold: float = 0.5, return_metadata: bool = True) -> Optional[Tuple]:
