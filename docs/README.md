@@ -10,6 +10,7 @@ SophiaAMS is an intelligent memory system for LLM-based applications featuring c
 - **🗨️ Conversational Memory**: Automatically processes chat conversations into semantic knowledge
 - **📄 Document Processing**: Ingests text files, web content, and documents into memory
 - **🧠 Semantic Retrieval**: Finds relevant memories using vector similarity and topic matching
+- **🎯 Goal Management**: Advanced goal system with dependencies, instrumental goals, and auto-prompt integration
 - **🌐 REST API**: FastAPI server with comprehensive endpoints for integration
 - **💻 Interactive Client**: Streamlit-based chat interface with memory visualization
 - **📊 Knowledge Exploration**: Browse topics, entities, and relationships in your knowledge graph
@@ -135,6 +136,57 @@ info = memory.query_related_information("quantum computing applications")
 print(info["summary"])
 ```
 
+## 🎯 Goal Management System
+
+SophiaAMS includes a sophisticated goal management system that enables the agent to maintain and work toward objectives autonomously.
+
+### Goal Types
+
+- **Standard Goals**: Regular, completable tasks
+- **Instrumental Goals**: Ongoing strategic objectives that never complete
+- **Derived Goals**: Action items spawned from instrumental goals (auto-prioritized)
+
+### Key Features
+
+- **Dependency Management**: Goals can depend on others with automatic blocking
+- **Forever Goals**: Instrumental goals that remain "ongoing" indefinitely
+- **Auto-Prompt Integration**: High-priority and instrumental goals automatically appear in agent context
+- **Smart Suggestions**: System suggests next goal based on priority, dependencies, and type
+- **Web Interface**: Full-featured UI for creating and managing goals
+- **Hierarchical Structure**: Parent-child goal relationships
+
+### Quick Example
+
+```python
+# Create an instrumental goal (never completes)
+memory.create_goal(
+    owner="Sophia",
+    description="Continuously expand knowledge of AI",
+    priority=5,
+    goal_type="instrumental",
+    is_forever_goal=True
+)
+
+# Create a derived goal (auto-prioritized)
+memory.create_goal(
+    owner="Sophia",
+    description="Study transformer architecture",
+    priority=4,
+    goal_type="derived",
+    parent_goal="Continuously expand knowledge of AI"
+)
+
+# Create goal with dependencies (blocked until deps met)
+memory.create_goal(
+    owner="Sophia",
+    description="Implement full training pipeline",
+    priority=4,
+    depends_on=["Set up data processing", "Configure model architecture"]
+)
+```
+
+**See [GOAL_SYSTEM_GUIDE.md](GOAL_SYSTEM_GUIDE.md) for comprehensive documentation.**
+
 ## 🌐 API Endpoints
 
 | Endpoint | Method | Description |
@@ -147,6 +199,11 @@ print(info["summary"])
 | `/explore/topics` | GET | Browse knowledge topics |
 | `/explore/entities` | GET | View connected entities |
 | `/conversation/buffer/{session_id}` | GET | Check conversation buffer status |
+| `/api/goals/create` | POST | Create a new goal |
+| `/api/goals/update` | POST | Update goal status or metadata |
+| `/api/goals` | GET | Query goals with filters |
+| `/api/goals/progress` | GET | Get goal statistics |
+| `/api/goals/suggestion` | GET | Get suggested next goal |
 
 See [API_README.md](API_README.md) for detailed API documentation.
 
