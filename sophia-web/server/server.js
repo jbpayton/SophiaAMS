@@ -291,6 +291,77 @@ app.get('/api/goals/suggestion', async (req, res) => {
   }
 });
 
+// Autonomous mode API endpoints - proxy to agent server
+app.post('/api/autonomous/start', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    console.log(`🤖 Starting autonomous mode for session: ${sessionId}`);
+    const response = await axios.post(`${AGENT_API}/api/autonomous/start`, null, {
+      params: { session_id: sessionId }
+    });
+    console.log('✅ Autonomous mode started:', response.data);
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Failed to start autonomous mode:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/autonomous/stop', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    console.log(`🛑 Stopping autonomous mode for session: ${sessionId}`);
+    const response = await axios.post(`${AGENT_API}/api/autonomous/stop`, null, {
+      params: { session_id: sessionId }
+    });
+    console.log('✅ Autonomous mode stopped:', response.data);
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Failed to stop autonomous mode:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/autonomous/status', async (req, res) => {
+  try {
+    const { sessionId } = req.query;
+    const response = await axios.get(`${AGENT_API}/api/autonomous/status`, {
+      params: { session_id: sessionId }
+    });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/autonomous/queue-message', async (req, res) => {
+  try {
+    const { sessionId, content } = req.body;
+    console.log(`📥 Queueing message for session ${sessionId}:`, content.substring(0, 50));
+    const response = await axios.post(`${AGENT_API}/api/autonomous/queue-message`,
+      { content },
+      { params: { session_id: sessionId } }
+    );
+    console.log('✅ Message queued:', response.data);
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Failed to queue message:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/autonomous/history', async (req, res) => {
+  try {
+    const { sessionId, limit = 10 } = req.query;
+    const response = await axios.get(`${AGENT_API}/api/autonomous/history`, {
+      params: { session_id: sessionId, limit }
+    });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   const sessionId = uuidv4();

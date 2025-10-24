@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { Send, Brain, Loader, CheckCircle, AlertCircle, Settings2, Trash2, ChevronDown, ChevronRight, Sparkles, Wrench } from 'lucide-react'
+import AutonomousControl from '../components/AutonomousControl'
 import './ChatPage.css'
 
 // Component to display collapsable thoughts (reasoning + tool calls + auto-recall)
@@ -535,6 +536,11 @@ function ChatPage() {
               />
             </label>
           </div>
+
+          {/* Autonomous Mode Control */}
+          {sessionId && (
+            <AutonomousControl sessionId={sessionId} />
+          )}
         </div>
       )}
 

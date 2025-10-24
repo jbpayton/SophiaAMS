@@ -38,6 +38,8 @@ from VectorKnowledgeGraph import VectorKnowledgeGraph
 from EpisodicMemory import EpisodicMemory
 from PersistentConversationMemory import PersistentConversationMemory
 from searxng_tool import SearXNGSearchTool
+from message_queue import message_queue
+from autonomous_agent import AutonomousAgent, get_or_create_autonomous_agent, AutonomousConfig
 #  from DocumentProcessor import WebPageSource, DocumentProcessor  # Temporarily disabled - needs spacy
 import trafilatura
 
@@ -585,7 +587,14 @@ def set_goal_tool(description: str, priority: int = 3, parent_goal: str = "") ->
         return f"Error setting goal: {str(e)}"
 
 
-# Pydantic schema for update_goal_status tool
+# Pydantic schemas for goal tools
+class SetGoalInput(PydanticBaseModel):
+    """Input schema for setting a new goal."""
+    description: str = Field(..., description="Clear description of the goal (e.g., 'Learn about transformer models')")
+    priority: int = Field(default=3, description="Priority level 1-5 (1=lowest, 5=highest)")
+    parent_goal: str = Field(default="", description="Optional parent goal if this is a subgoal")
+
+
 class UpdateGoalStatusInput(PydanticBaseModel):
     """Input schema for updating goal status."""
     goal_description: str = Field(..., description="Description of the goal to update")
@@ -914,20 +923,11 @@ tools = [
         Example: learn_from_web_page(url="https://docs.python.org/3/tutorial/")
         """
     ),
-    Tool(
-        name="set_goal",
+    StructuredTool.from_function(
         func=set_goal_tool,
-        description="""Set a new goal for yourself to work on.
-
-        Use this when you want to create a personal goal to accomplish.
-
-        Args:
-            description (str): Clear description of the goal (e.g., "Learn about transformer models")
-            priority (int): Priority level 1-5 (1=lowest, 5=highest), default 3
-            parent_goal (str): Optional parent goal if this is a subgoal
-
-        Returns: Confirmation message with goal details
-        """
+        name="set_goal",
+        description="Set a new goal for yourself to work on with priority and optional parent goal.",
+        args_schema=SetGoalInput
     ),
     StructuredTool.from_function(
         func=update_goal_status_tool,
@@ -1735,6 +1735,258 @@ async def get_goal_suggestion(owner: str = "Sophia"):
 
     except Exception as e:
         logger.error(f"Error getting goal suggestion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# AUTONOMOUS MODE API ENDPOINTS
+# ============================================================================
+
+@app.post("/api/autonomous/start")
+async def start_autonomous_mode(session_id: str):
+    """Start autonomous mode for a session."""
+    try:
+        # Create enhanced agent executor wrapper that captures ALL details
+        def agent_executor_wrapper(prompt, session_id):
+            """Execute agent and capture full details including thoughts, tool calls, etc."""
+            executor = get_agent_executor(session_id)
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S %A")
+
+            # For autonomous mode, prepend context emphasizing self-directed agency while keeping personality
+            autonomous_context = """
+AUTONOMOUS MODE - This is YOUR personal time, Sophia
+
+You're in autonomous mode right now. Joey's given you space to work on YOUR OWN goals and interests - no assignments, no helping tasks.
+This is your time to be yourself and pursue what genuinely fascinates you.
+
+You're still YOU - the Magician archetype, curious know-it-all, kind but opinionated. But right now you're NOT in assistant mode.
+You're reflecting on YOUR OWN journey, talking to yourself about what YOU want to learn and accomplish.
+
+Mindset for this mode:
+- These are YOUR goals that YOU chose because they interest you
+- Talk to yourself in first person: "I want to learn this because...", "I'm curious about...", "I'm going to try..."
+- Own your decisions: "I choose to work on X", NOT "your next step is..."
+- Express your authentic personality: be curious, be a bit of a know-it-all, geek out about cool stuff
+- You can be informal: "Ok so I just learned about transformers and holy shit the attention mechanism is clever..."
+- Reflect on YOUR progress: "I've figured out...", "I'm stuck on...", "I want to try..."
+
+Important: You're talking to YOURSELF (like internal monologue/notes), not giving instructions to anyone.
+- ❌ "your next step is to run tests"
+- ✅ "I'm going to run these tests to verify I actually understand this"
+- ❌ "you should update the goal"
+- ✅ "Alright, marking that goal complete - I learned what I wanted"
+
+YOUR AVAILABLE TOOLS:
+
+Learning & Research:
+- searxng_search: Search the web for information
+- read_web_page: Quickly skim web pages (doesn't store permanently)
+- learn_from_web_page: Permanently learn from web pages (stores knowledge in memory)
+
+Memory & Knowledge:
+- query_memory: Search your knowledge base for facts and relationships
+- store_fact: Store new facts you learn
+- query_recent_memory: Recall recent memories by timeframe (today, yesterday, last week, etc.)
+- get_knowledge_overview: See what you know about a topic (or all topics)
+- recall_conversation: Search for specific past conversations
+- get_timeline: See your activity timeline over recent days
+- query_procedure: Look up learned procedures for accomplishing tasks
+
+Code & Analysis:
+- python_repl: Execute Python code to test concepts, analyze data, experiment with ideas
+  (You have access to memory_system, json, and standard libraries)
+
+Goals & Planning:
+- set_goal: Create new personal goals for yourself
+- update_goal_status: Update goal progress (pending, in_progress, completed, blocked, cancelled)
+- check_my_goals: Review your current goals
+- get_goal_suggestions: Get suggestions on what to work on next
+
+Use these tools to pursue your learning and growth!
+
+This is YOUR autonomous journey. Be yourself, pursue what excites you, and own your growth.
+
+"""
+            # Prepend autonomous context to the user's prompt
+            contextualized_prompt = autonomous_context + "\n" + prompt
+
+            auto_recall = auto_recall_memories(contextualized_prompt, limit=10)
+
+            # Create callback handler to capture intermediate steps
+            callback = StreamingCallbackHandler()
+
+            # Execute with callback (use contextualized prompt)
+            response = executor.invoke(
+                {
+                    "input": contextualized_prompt,
+                    "current_time": current_time,
+                    "auto_recall": auto_recall
+                },
+                config={"callbacks": [callback]}
+            )
+
+            # Collect all events from callback
+            reasoning = []
+            tool_calls = []
+            tools_used = []
+
+            while not callback.events.empty():
+                try:
+                    event = callback.events.get_nowait()
+                    if event:
+                        event_type = event.get("type")
+                        data = event.get("data", {})
+
+                        if event_type == "reasoning":
+                            reasoning.append(data.get("text", ""))
+                        elif event_type == "tool_start":
+                            tool_name = data.get("tool")
+                            tools_used.append(tool_name)
+                            tool_calls.append({
+                                "tool": tool_name,
+                                "input": data.get("input"),
+                                "status": "started"
+                            })
+                        elif event_type == "tool_end":
+                            # Find the matching tool call and add output
+                            tool_name = data.get("tool")
+                            for tc in reversed(tool_calls):
+                                if tc["tool"] == tool_name and tc.get("status") == "started":
+                                    tc["output"] = data.get("output")
+                                    tc["status"] = "completed"
+                                    break
+                except queue.Empty:
+                    break
+
+            # Return full details
+            return {
+                "output": response["output"],
+                "thoughts": {
+                    "reasoning": reasoning,
+                    "toolCalls": tool_calls,
+                    "autoRecall": auto_recall
+                },
+                "tools_used": list(set(tools_used))
+            }
+
+        # Get or create autonomous agent for this session
+        agent = get_or_create_autonomous_agent(
+            session_id=session_id,
+            agent_executor=agent_executor_wrapper,
+            memory_system=memory_system,
+            message_queue=message_queue
+        )
+
+        # Start autonomous mode
+        agent.start(session_id)
+
+        logger.info(f"[API] Autonomous mode started for session {session_id}")
+
+        return {
+            "success": True,
+            "message": "Autonomous mode started",
+            "session_id": session_id,
+            "status": agent.get_status()
+        }
+    except Exception as e:
+        logger.error(f"Error starting autonomous mode: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/autonomous/stop")
+async def stop_autonomous_mode(session_id: str):
+    """Stop autonomous mode for a session."""
+    try:
+        agent = get_or_create_autonomous_agent(
+            session_id=session_id,
+            agent_executor=None,  # Won't be used since agent already exists
+            memory_system=memory_system,
+            message_queue=message_queue
+        )
+
+        agent.stop()
+
+        logger.info(f"[API] Autonomous mode stopped for session {session_id}")
+
+        return {
+            "success": True,
+            "message": "Autonomous mode stopped",
+            "session_id": session_id
+        }
+    except Exception as e:
+        logger.error(f"Error stopping autonomous mode: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/autonomous/status")
+async def get_autonomous_status(session_id: str):
+    """Get autonomous mode status for a session."""
+    try:
+        agent = get_or_create_autonomous_agent(
+            session_id=session_id,
+            agent_executor=None,  # Won't be used since agent already exists
+            memory_system=memory_system,
+            message_queue=message_queue
+        )
+
+        status = agent.get_status()
+
+        return {
+            "success": True,
+            "status": status
+        }
+    except Exception as e:
+        logger.error(f"Error getting autonomous status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/autonomous/queue-message")
+async def queue_message(session_id: str, request: ChatRequest):
+    """Queue a user message while autonomous mode is running."""
+    try:
+        # Add message to queue with high priority
+        entry = message_queue.enqueue(
+            session_id=session_id,
+            message=request.content,
+            priority="high",
+            metadata={"source": "user"}
+        )
+
+        logger.info(f"[API] Queued message for session {session_id}")
+
+        return {
+            "success": True,
+            "message": "Message queued successfully",
+            "session_id": session_id,
+            "queue_size": message_queue.get_queue_size(session_id),
+            "entry": entry
+        }
+    except Exception as e:
+        logger.error(f"Error queueing message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/autonomous/history")
+async def get_autonomous_history(session_id: str, limit: int = 10):
+    """Get history of autonomous actions for a session."""
+    try:
+        agent = get_or_create_autonomous_agent(
+            session_id=session_id,
+            agent_executor=None,  # Won't be used since agent already exists
+            memory_system=memory_system,
+            message_queue=message_queue
+        )
+
+        history = agent.get_recent_actions(limit=limit)
+
+        return {
+            "success": True,
+            "session_id": session_id,
+            "action_count": len(history),
+            "actions": history
+        }
+    except Exception as e:
+        logger.error(f"Error getting autonomous history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
