@@ -27,6 +27,7 @@ from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain_openai import ChatOpenAI
 from langchain.tools import Tool, StructuredTool
 from langchain_experimental.tools import PythonREPLTool
+from langchain_community.tools import ShellTool
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.base import BaseCallbackHandler
@@ -1011,6 +1012,56 @@ tools = [
         topics.most_common(10)
         """,
         globals={"memory_system": memory_system, "json": json}
+    ),
+    ShellTool(
+        name="shell",
+        description="""Execute shell commands in the Linux container environment.
+
+        This gives you full command-line access to interact with the system, manage files,
+        install packages, run utilities, and perform system operations.
+
+        Common use cases:
+        - File operations: ls, cat, find, grep, touch, mkdir, rm, cp, mv
+        - Text processing: grep, sed, awk, cut, sort, uniq, wc
+        - System info: pwd, whoami, uname, df, du, ps, top
+        - Package management: apt-get, pip install
+        - Network: curl, wget, ping, netstat
+        - Git operations: git clone, git status, git log
+        - Process management: ps, kill, pkill
+        - Archive operations: tar, zip, unzip, gzip
+
+        Security notes:
+        - Commands run as the container user (non-root by default)
+        - Container has isolated filesystem
+        - Network access is available for downloads/API calls
+        - Data in mounted volumes persists
+
+        Examples:
+        # Check current directory and files
+        shell(command="pwd && ls -lah")
+
+        # Search for specific content
+        shell(command="grep -r 'specific pattern' /app/data/")
+
+        # Install a Python package
+        shell(command="pip install requests")
+
+        # Download and process data
+        shell(command="curl -s https://api.example.com/data | jq '.results'")
+
+        # Check system resources
+        shell(command="df -h && free -m")
+
+        # Find files by pattern
+        shell(command="find /app/data -name '*.json' -mtime -7")
+
+        WARNING: This is a powerful tool. Be careful with destructive commands (rm, mv, etc.).
+        The container has access to persistent volumes, so changes to /app/data and
+        /app/VectorKnowledgeGraphData will persist across restarts.
+        """,
+        # Ask for confirmation before destructive operations
+        # This helps prevent accidental data loss
+        ask_human_input=False  # Set to True if you want confirmation prompts
     )
 ]
 
@@ -1052,7 +1103,10 @@ Your capabilities - a rich dual-layer memory system:
 - **searxng_search**: Search the web for current information
 - **read_web_page**: Quickly skim web pages (fast, temporary - doesn't store)
 - **learn_from_web_page**: Permanently learn from a webpage (slow, permanent knowledge extraction)
+
+**Execution & Computation**:
 - **python_repl**: Execute Python for complex analysis and data transformations
+- **shell**: Execute Linux shell commands (file operations, system utilities, package installation, etc.)
 
 **Goal Management** (autonomous self-improvement):
 - **set_goal**: Create personal goals to work on (with priority and hierarchy)
@@ -1792,9 +1846,11 @@ Memory & Knowledge:
 - get_timeline: See your activity timeline over recent days
 - query_procedure: Look up learned procedures for accomplishing tasks
 
-Code & Analysis:
+Code & System Operations:
 - python_repl: Execute Python code to test concepts, analyze data, experiment with ideas
   (You have access to memory_system, json, and standard libraries)
+- shell: Execute Linux shell commands to interact with the system, manage files, install packages, etc.
+  (Full command-line access: ls, grep, curl, wget, pip, git, and all standard Unix utilities)
 
 Goals & Planning:
 - set_goal: Create new personal goals for yourself

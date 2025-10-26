@@ -1,0 +1,88 @@
+version: '3.8'
+
+# Development override for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Python Agent Server - Development with hot reload
+  sophia-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    volumes:
+      # Mount source code for hot reload
+      - ./agent_server.py:/app/agent_server.py
+      - ./AssociativeSemanticMemory.py:/app/AssociativeSemanticMemory.py
+      - ./VectorKnowledgeGraph.py:/app/VectorKnowledgeGraph.py
+      - ./EpisodicMemory.py:/app/EpisodicMemory.py
+      - ./PersistentConversationMemory.py:/app/PersistentConversationMemory.py
+      - ./autonomous_agent.py:/app/autonomous_agent.py
+      - ./MemoryExplorer.py:/app/MemoryExplorer.py
+      - ./message_queue.py:/app/message_queue.py
+      - ./goal_manager.py:/app/goal_manager.py
+      - ./tools:/app/tools
+      # Keep persistent data volumes
+      - episodic_memory:/app/data/episodic_memory
+      - vector_data:/app/VectorKnowledgeGraphData
+      - agent_logs:/app/logs
+    environment:
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-http://host.docker.internal:1234/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-lm-studio}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - SEARXNG_URL=${SEARXNG_URL:-http://host.docker.internal:8088}
+      - AGENT_PORT=5001
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    command: ["python", "-u", "agent_server.py"]
+
+  # Node.js Proxy Server - Development with nodemon
+  sophia-server:
+    build:
+      context: ./sophia-web/server
+      dockerfile: Dockerfile
+    volumes:
+      # Mount source for hot reload
+      - ./sophia-web/server/server.js:/app/server.js
+      - ./sophia-web/server/package.json:/app/package.json
+    environment:
+      - AGENT_URL=http://sophia-agent:5001
+      - PORT=3001
+      - NODE_ENV=development
+    # Override to use nodemon for hot reload
+    command: ["npx", "nodemon", "server.js"]
+
+  # React Frontend - Development with Vite dev server
+  sophia-web:
+    build:
+      context: ./sophia-web/client
+      dockerfile: Dockerfile
+      target: builder
+    ports:
+      - "3000:5173"  # Vite dev server port
+    volumes:
+      # Mount source code for hot module replacement
+      - ./sophia-web/client/src:/app/src
+      - ./sophia-web/client/public:/app/public
+      - ./sophia-web/client/index.html:/app/index.html
+      - ./sophia-web/client/vite.config.js:/app/vite.config.js
+      # Exclude node_modules to use container's version
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:3001
+      - NODE_ENV=development
+    # Override to use Vite dev server
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5173"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  qdrant_storage:
+  episodic_memory:
+  vector_data:
+  agent_logs:
