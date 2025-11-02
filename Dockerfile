@@ -40,7 +40,7 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code - all Python modules needed by the application
 COPY agent_server.py .
 COPY AssociativeSemanticMemory.py .
 COPY VectorKnowledgeGraph.py .
@@ -51,6 +51,9 @@ COPY MemoryExplorer.py .
 COPY message_queue.py .
 COPY searxng_tool.py .
 COPY utils.py .
+COPY triple_extraction.py .
+COPY prompts.py .
+COPY schemas.py .
 
 # Create directories for persistent data
 RUN mkdir -p /app/data/episodic_memory \
