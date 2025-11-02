@@ -50,6 +50,7 @@ COPY autonomous_agent.py .
 COPY MemoryExplorer.py .
 COPY message_queue.py .
 COPY searxng_tool.py .
+COPY utils.py .
 
 # Create directories for persistent data
 RUN mkdir -p /app/data/episodic_memory \
