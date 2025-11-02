@@ -47,7 +47,70 @@ All services communicate via an isolated Docker network and persist data through
 
 ## Quick Start
 
-### 1. Clone the Repository
+### Automated Installation (Recommended)
+
+The easiest way to install Sophia AMS on a fresh Linux system:
+
+```bash
+# Download and run the installation script
+curl -fsSL https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh | bash
+
+# Or if you prefer wget
+wget -O - https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh | bash
+
+# Or download and run manually
+wget https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh
+chmod +x install.sh
+./install.sh
+```
+
+The installation script will:
+- ✅ Check and install dependencies (Docker, Docker Compose, Git)
+- ✅ Clone the repository
+- ✅ Guide you through environment configuration with prompts
+- ✅ Build and start all Docker services
+- ✅ Verify the installation
+- ✅ Display access URLs
+
+**That's it!** Skip to [Access the Application](#4-access-the-application)
+
+### Updating an Existing Installation
+
+Use the update script to pull latest changes and rebuild:
+
+```bash
+cd ~/SophiaAMS  # or your installation directory
+./update.sh
+```
+
+The update script will:
+- Backup your `.env` configuration
+- Pull latest code from Git
+- Rebuild Docker images
+- Restart services with minimal downtime
+- Preserve all data volumes
+
+### Uninstalling
+
+To remove Sophia AMS:
+
+```bash
+cd ~/SophiaAMS
+./uninstall.sh
+```
+
+Options:
+- `./uninstall.sh --keep-data` - Remove services but keep data
+- `./uninstall.sh --keep-images` - Keep Docker images
+- `./uninstall.sh --all` - Remove everything without prompts
+
+---
+
+### Manual Installation
+
+If you prefer to install manually or want more control:
+
+#### 1. Clone the Repository
 
 ```bash
 git clone <repository-url>
@@ -634,8 +697,15 @@ docker-compose -f docker-compose.yml -f docker-compose.test.yml up
 
 ## Maintenance
 
-### Update Images
+### Update Installation
 
+**Automated (Recommended):**
+```bash
+# Use the update script for safe updates
+./update.sh
+```
+
+**Manual:**
 ```bash
 # Pull latest changes
 git pull
