@@ -23,7 +23,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from langchain.agents import AgentExecutor, create_openai_tools_agent
+try:
+    from langchain.agents import AgentExecutor, create_openai_tools_agent
+except ImportError:
+    # LangChain >= 0.2.0 moved AgentExecutor
+    from langchain.agents.agent import AgentExecutor
+    from langchain.agents import create_openai_tools_agent
 from langchain_openai import ChatOpenAI
 from langchain.tools import Tool, StructuredTool
 from langchain_experimental.tools import PythonREPLTool
