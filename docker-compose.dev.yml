@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Development override for docker-compose.yml
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
@@ -20,8 +18,7 @@ services:
       - ./autonomous_agent.py:/app/autonomous_agent.py
       - ./MemoryExplorer.py:/app/MemoryExplorer.py
       - ./message_queue.py:/app/message_queue.py
-      - ./goal_manager.py:/app/goal_manager.py
-      - ./tools:/app/tools
+      - ./searxng_tool.py:/app/searxng_tool.py
       # Keep persistent data volumes
       - episodic_memory:/app/data/episodic_memory
       - vector_data:/app/VectorKnowledgeGraphData

@@ -49,8 +49,7 @@ COPY PersistentConversationMemory.py .
 COPY autonomous_agent.py .
 COPY MemoryExplorer.py .
 COPY message_queue.py .
-COPY goal_manager.py .
-COPY tools/ tools/
+COPY searxng_tool.py .
 
 # Create directories for persistent data
 RUN mkdir -p /app/data/episodic_memory \
