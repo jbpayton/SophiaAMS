@@ -21,6 +21,10 @@ services:
       - SEARXNG_URL=${SEARXNG_URL:-http://host.docker.internal:8088}
       - AGENT_PORT=5001
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    # DNS servers for internet connectivity
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     # For Linux: Add host.docker.internal mapping
     extra_hosts:
       - "host.docker.internal:host-gateway"
