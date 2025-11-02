@@ -10,7 +10,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+# Use npm install for better compatibility
+RUN npm install
 
 # Copy source code
 COPY . .
