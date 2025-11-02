@@ -14,10 +14,12 @@ tiktoken
 trafilatura
 
 # LangChain dependencies for agent server
-langchain
-langchain-openai
-langchain-community
-langchain-experimental
+# Pin to 0.1.x versions where AgentExecutor is in langchain.agents
+langchain==0.1.20
+langchain-openai==0.0.8
+langchain-community==0.0.38
+langchain-experimental==0.0.58
+langchain-core==0.1.52
 fastapi
 uvicorn[standard]
 websockets
