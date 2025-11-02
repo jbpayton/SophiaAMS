@@ -11,11 +11,11 @@
 # - Builds and starts Docker containers
 #
 # Usage:
-#   wget -O - https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh | bash
+#   wget -O - https://raw.githubusercontent.com/jbpayton/SophiaAMS/main/install.sh | bash
 #
 #   OR
 #
-#   curl -fsSL https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/jbpayton/SophiaAMS/main/install.sh | bash
 #
 #   OR (manual):
 #
@@ -34,7 +34,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO_URL="${REPO_URL:-https://github.com/your-org/SophiaAMS.git}"  # Replace with your repo URL
+REPO_URL="${REPO_URL:-https://github.com/jbpayton/SophiaAMS.git}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/SophiaAMS}"
 BRANCH="${BRANCH:-main}"
 

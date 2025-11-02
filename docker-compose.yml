@@ -35,11 +35,16 @@ services:
       - agent_logs:/app/logs
     environment:
       - OPENAI_API_BASE=${OPENAI_API_BASE:-http://host.docker.internal:1234/v1}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-lm-studio}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}
+      - LLM_API_BASE=${LLM_API_BASE:-http://host.docker.internal:1234/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-not-needed}
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - SEARXNG_URL=${SEARXNG_URL:-http://host.docker.internal:8088}
       - AGENT_PORT=5001
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    # For Linux: Add host.docker.internal mapping
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - sophia-network
     depends_on:

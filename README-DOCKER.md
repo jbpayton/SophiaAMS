@@ -53,13 +53,13 @@ The easiest way to install Sophia AMS on a fresh Linux system:
 
 ```bash
 # Download and run the installation script
-curl -fsSL https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jbpayton/SophiaAMS/main/install.sh | bash
 
 # Or if you prefer wget
-wget -O - https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh | bash
+wget -O - https://raw.githubusercontent.com/jbpayton/SophiaAMS/main/install.sh | bash
 
 # Or download and run manually
-wget https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh
+wget https://raw.githubusercontent.com/jbpayton/SophiaAMS/main/install.sh
 chmod +x install.sh
 ./install.sh
 ```

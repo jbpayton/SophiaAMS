@@ -5,7 +5,7 @@
 The fastest way to get Sophia AMS running on a fresh Linux server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jbpayton/SophiaAMS/main/install.sh | bash
 ```
 
 That's it! The script will handle everything automatically.
@@ -43,7 +43,7 @@ Sophia needs an OpenAI-compatible LLM API:
 
 ```bash
 # Download and run installation script
-curl -fsSL https://raw.githubusercontent.com/your-org/SophiaAMS/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jbpayton/SophiaAMS/main/install.sh | bash
 ```
 
 The script will:
@@ -69,7 +69,7 @@ sudo usermod -aG docker $USER
 sudo apt-get install docker-compose-plugin
 
 # 3. Clone repository
-git clone https://github.com/your-org/SophiaAMS.git
+git clone https://github.com/jbpayton/SophiaAMS.git
 cd SophiaAMS
 
 # 4. Configure environment
