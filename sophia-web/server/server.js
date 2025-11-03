@@ -32,17 +32,6 @@ const LLM_MODEL = process.env.EXTRACTION_MODEL || 'openai/gpt-oss-20b';
 app.use(cors());
 app.use(express.json());
 
-// HTTP Server
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-  console.log(`🐍 Python API: ${PYTHON_API}`);
-  console.log(`🤖 Agent API: ${AGENT_API}`);
-  console.log(`🧠 LLM: ${llmClient.baseURL} (${LLM_MODEL})`);
-});
-
-// WebSocket Server
-const wss = new WebSocketServer({ server });
-
 // Store active sessions
 const sessions = new Map();
 
@@ -362,37 +351,6 @@ app.get('/api/autonomous/history', async (req, res) => {
   }
 });
 
-// WebSocket connection handler
-wss.on('connection', (ws) => {
-  const sessionId = uuidv4();
-  sessions.set(sessionId, { ws, messages: [] });
-
-  console.log(`📱 Client connected: ${sessionId}`);
-
-  ws.send(JSON.stringify({
-    type: 'connected',
-    sessionId,
-    message: 'Connected to SophiaAMS'
-  }));
-
-  ws.on('message', async (data) => {
-    try {
-      const message = JSON.parse(data);
-      await handleWebSocketMessage(ws, sessionId, message);
-    } catch (error) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        error: error.message
-      }));
-    }
-  });
-
-  ws.on('close', () => {
-    console.log(`📴 Client disconnected: ${sessionId}`);
-    sessions.delete(sessionId);
-  });
-});
-
 async function handleWebSocketMessage(ws, sessionId, message) {
   const { type, data } = message;
 
@@ -551,5 +509,47 @@ async function handleGraphRequest(ws, data) {
     }));
   }
 }
+
+// HTTP Server - start listening AFTER all routes are defined
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+  console.log(`🐍 Python API: ${PYTHON_API}`);
+  console.log(`🤖 Agent API: ${AGENT_API}`);
+  console.log(`🧠 LLM: ${llmClient.baseURL} (${LLM_MODEL})`);
+});
+
+// WebSocket Server
+const wss = new WebSocketServer({ server });
+
+// WebSocket connection handler
+wss.on('connection', (ws) => {
+  const sessionId = uuidv4();
+  sessions.set(sessionId, { ws, messages: [] });
+
+  console.log(`📱 Client connected: ${sessionId}`);
+
+  ws.send(JSON.stringify({
+    type: 'connected',
+    sessionId,
+    message: 'Connected to SophiaAMS'
+  }));
+
+  ws.on('message', async (data) => {
+    try {
+      const message = JSON.parse(data);
+      await handleWebSocketMessage(ws, sessionId, message);
+    } catch (error) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        error: error.message
+      }));
+    }
+  });
+
+  ws.on('close', () => {
+    console.log(`📴 Client disconnected: ${sessionId}`);
+    sessions.delete(sessionId);
+  });
+});
 
 export default app;
