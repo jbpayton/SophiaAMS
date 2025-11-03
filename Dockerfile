@@ -40,9 +40,12 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the sentence-transformer model during build (when internet works)
-# This avoids needing internet at runtime
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+# Pre-download the sentence-transformer model during build
+# Set environment variable to cache it in the container
+ENV SENTENCE_TRANSFORMERS_HOME=/app/models
+ENV HF_HOME=/app/models
+RUN mkdir -p /app/models && \
+    python -c "from sentence_transformers import SentenceTransformer; model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); model.save('/app/models/all-MiniLM-L6-v2')"
 
 # Copy all application Python files
 # Using wildcard to catch all modules to avoid missing dependencies
