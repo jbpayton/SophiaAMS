@@ -32,7 +32,7 @@ from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import AgentAction, AgentFinish, LLMResult
-from pydantic import BaseModel as PydanticBaseModel, Field
+from pydantic.v1 import BaseModel as PydanticBaseModel, Field
 
 from AssociativeSemanticMemory import AssociativeSemanticMemory
 from VectorKnowledgeGraph import VectorKnowledgeGraph
