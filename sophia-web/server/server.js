@@ -33,8 +33,8 @@ app.use(cors());
 app.use(express.json());
 
 // HTTP Server
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
   console.log(`🐍 Python API: ${PYTHON_API}`);
   console.log(`🤖 Agent API: ${AGENT_API}`);
   console.log(`🧠 LLM: ${llmClient.baseURL} (${LLM_MODEL})`);
