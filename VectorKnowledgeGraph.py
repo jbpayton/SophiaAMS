@@ -33,7 +33,20 @@ class VectorKnowledgeGraph:
         logging.debug(f"Initializing VectorKnowledgeGraph with path: {path}")
         if embedding_model is None:
             logging.debug("Using default embedding model")
-            self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2'))
+            model_name = os.getenv('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2')
+            # Try to load from saved location first (for Docker offline mode)
+            saved_model_path = '/app/models/all-MiniLM-L6-v2'
+            if os.path.exists(saved_model_path):
+                logging.info(f"Loading model from saved path: {saved_model_path}")
+                # Use local_files_only to prevent any network access
+                self.embedding_model = SentenceTransformer(
+                    saved_model_path,
+                    local_files_only=True,
+                    cache_folder='/app/models'
+                )
+            else:
+                logging.debug(f"Loading model: {model_name}")
+                self.embedding_model = SentenceTransformer(model_name)
             # Suppress progress bars globally for this model
             self.embedding_model._show_progress_bar = False
             # Ensure embedding_dim has a default integer value
