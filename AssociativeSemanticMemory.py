@@ -2,7 +2,6 @@ import time
 from typing import Dict, List, Tuple, Optional, Any
 from VectorKnowledgeGraph import VectorKnowledgeGraph
 from triple_extraction import extract_triples_from_string
-from ContextSummarizers import ContextSummarizers
 import os
 import shutil
 import atexit
@@ -15,12 +14,11 @@ class AssociativeSemanticMemory:
     def __init__(self, kgraph: VectorKnowledgeGraph):
         """
         Initialize the associative semantic memory system.
-        
+
         Args:
             kgraph: VectorKnowledgeGraph instance for storing triples
         """
         self.kgraph = kgraph
-        self.summarizer = ContextSummarizers()  # No longer passing kgraph
         logging.debug("Initialized AssociativeSemanticMemory")
 
     def close(self):
@@ -38,8 +36,9 @@ class AssociativeSemanticMemory:
     def ingest_text(self, text: str, source: str = "unknown", timestamp: Optional[float] = None,
                    speaker: Optional[str] = None, episode_id: Optional[str] = None) -> Dict:
         """
-        Process text by generating summary and extracting triples.
-        Topics are now an integral part of each triple.
+        Process text by extracting triples directly from the original text.
+        No intermediate summarization — triples are grounded in actual source text,
+        which avoids hallucinated facts from small summarization models.
 
         Args:
             text: Input text to process
@@ -49,67 +48,47 @@ class AssociativeSemanticMemory:
             episode_id: Optional episode identifier for episodic memory linking
 
         Returns:
-            dict: Results including summary and triples (with embedded topics)
+            dict: Results including extracted triples (with embedded topics)
         """
         logging.info(f"Processing text from source: {source}")
         logging.debug(f"Text length: {len(text)} characters")
-        
+
         # Detect if this is a conversation based on source or content
         is_conversation = (
             "conversation" in source.lower()
         )
-        
-        # Generate summary
-        logging.debug("Generating summary")
-        summary = self.summarizer.generate_summary(text)
-        logging.debug(f"Generated summary of length: {len(summary)} characters")
-        
-        # Extract triples from original text
+
+        # Extract triples directly from original text (no summarization step)
         logging.debug("Extracting triples from original text")
-        original_triples_extraction = extract_triples_from_string( # Renamed variable
-            text, 
-            source=source, 
-            timestamp=timestamp, 
+        triples_extraction = extract_triples_from_string(
+            text,
+            source=source,
+            timestamp=timestamp,
             speaker=speaker,
             is_conversation=is_conversation
-            # No include_topics
         )
-        logging.info(f"Extracted {len(original_triples_extraction.get('triples', []))} triples from original text")
-        
-        # Extract triples from summary
-        logging.debug("Extracting triples from summary")
-        summary_triples_extraction = extract_triples_from_string( # Renamed variable
-            summary, 
-            source=f"{source}_summary", 
-            timestamp=timestamp, 
-            speaker=speaker,
-            is_conversation=is_conversation
-            # No include_topics
-        )
-        logging.info(f"Extracted {len(summary_triples_extraction.get('triples', []))} triples from summary")
-        
+        logging.info(f"Extracted {len(triples_extraction.get('triples', []))} triples from text")
+
         # Prepare triples and metadata for storage
         all_triples: List[Tuple[str, str, str]] = []
         metadata_list: List[Dict] = []
-        
-        # Process original triples
-        logging.debug("Processing original triples")
-        for triple_data in original_triples_extraction.get("triples", []):
+
+        for triple_data in triples_extraction.get("triples", []):
             try:
                 subject = triple_data["subject"]
                 relationship = triple_data["verb"]
                 obj = triple_data["object"]
                 all_triples.append((subject, relationship, obj))
-                
-                triple_speaker = triple_data.get("speaker", original_triples_extraction.get("speaker", speaker))
-                
+
+                triple_speaker = triple_data.get("speaker", triples_extraction.get("speaker", speaker))
+
                 metadata = {
                     "source": source,
-                    "timestamp": original_triples_extraction.get("timestamp"), # Use timestamp from extraction result
+                    "timestamp": triples_extraction.get("timestamp"),
                     "is_from_summary": False,
                     "source_text": triple_data.get("source_text", ""),
                     "speaker": triple_speaker,
-                    "topics": triple_data.get("topics", []), # Get topics from the triple itself
+                    "topics": triple_data.get("topics", []),
                     "episode_id": episode_id
                 }
                 metadata_list.append(metadata)
@@ -117,49 +96,16 @@ class AssociativeSemanticMemory:
                 logging.error(f"Error processing triple: {e}")
                 logging.debug(f"Triple data: {triple_data}")
                 continue
-        
-        # Process summary triples
-        logging.debug("Processing summary triples")
-        for triple_data in summary_triples_extraction.get("triples", []):
-            try:
-                subject = triple_data["subject"]
-                relationship = triple_data["verb"]
-                obj = triple_data["object"]
-                all_triples.append((subject, relationship, obj))
-                
-                triple_speaker = triple_data.get("speaker", summary_triples_extraction.get("speaker", speaker))
-                
-                metadata = {
-                    "source": f"{source}_summary",
-                    "timestamp": summary_triples_extraction.get("timestamp"), # Use timestamp from extraction result
-                    "is_from_summary": True,
-                    "source_text": triple_data.get("source_text", ""),
-                    "speaker": triple_speaker,
-                    "topics": triple_data.get("topics", []), # Get topics from the triple itself
-                    "episode_id": episode_id
-                }
-                metadata_list.append(metadata)
-            except Exception as e:
-                logging.error(f"Error processing summary triple: {e}")
-                logging.debug(f"Triple data: {triple_data}")
-                continue
-        
-        # Removed call to self._add_topic_triples as topics are now embedded
-        
+
         # Add all triples to knowledge graph
         if all_triples:
             logging.debug(f"Adding {len(all_triples)} triples to knowledge graph")
             self.kgraph.add_triples(all_triples, metadata_list)
             logging.info(f"Successfully added {len(all_triples)} triples to knowledge graph")
-        
-        # Return results
-        result = {
-            "summary": summary,
-            "original_triples": original_triples_extraction.get("triples", []), # Return the list of triples
-            "summary_triples": summary_triples_extraction.get("triples", [])  # Return the list of triples
+
+        return {
+            "triples": triples_extraction.get("triples", []),
         }
-        # Removed separate 'topics' key from result
-        return result
 
     def _extract_candidate_topics(self, text: str, max_topics: int = 5) -> List[str]:
         """Very lightweight topic extraction: keep meaningful non-stopwords longer than 3 chars."""

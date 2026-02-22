@@ -169,6 +169,17 @@ cython_debug/
 #.idea/
 .claude/settings.local.json
 
+# Setup wizard sentinel
+.setup_complete
+
+# Workspace runtime data (agent-generated)
+workspace/
+reports/
+
+# Agent-generated test artifacts
+test_minimal_transformer/
+minimal_transformer_encoder_test.py
+
 # Node.js
 node_modules/
 npm-debug.log*

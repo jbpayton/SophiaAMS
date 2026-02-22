@@ -1,0 +1,394 @@
+.setup-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #0a0a0a;
+  padding: 20px;
+}
+
+.setup-card {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 700px;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* Progress bar */
+.setup-progress {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.progress-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #222;
+  color: #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.progress-step.active .progress-dot {
+  background: #1e40af;
+  color: #fff;
+}
+
+.progress-step.done .progress-dot {
+  background: #166534;
+  color: #fff;
+}
+
+.progress-label {
+  font-size: 11px;
+  color: #555;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.progress-step.active .progress-label {
+  color: #ccc;
+}
+
+/* Step content */
+.setup-content {
+  min-height: 300px;
+}
+
+.setup-step h2 {
+  color: #fff;
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.setup-step > p {
+  color: #888;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.welcome-step {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.welcome-icon {
+  color: #3b82f6;
+}
+
+.setup-note {
+  color: #555 !important;
+  font-size: 14px;
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  color: #aaa;
+  font-size: 13px;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #e0e0e0;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: #1e40af;
+}
+
+.form-group textarea {
+  resize: vertical;
+}
+
+/* Test button */
+.test-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.test-btn:hover:not(:disabled) {
+  background: #222;
+  border-color: #444;
+}
+
+.test-btn.success {
+  border-color: #166534;
+  color: #4ade80;
+}
+
+.test-btn.error {
+  border-color: #991b1b;
+  color: #f87171;
+}
+
+.test-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.test-result {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.test-result.success {
+  background: #052e16;
+  border: 1px solid #166534;
+  color: #4ade80;
+}
+
+.test-result.error {
+  background: #1c0a0a;
+  border: 1px solid #991b1b;
+  color: #f87171;
+}
+
+/* Preset grid */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.preset-card {
+  background: #1a1a1a;
+  border: 2px solid #222;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.preset-card:hover {
+  border-color: #333;
+  background: #1e1e1e;
+}
+
+.preset-card.selected {
+  border-color: #1e40af;
+  background: #0f172a;
+}
+
+.preset-icon {
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.preset-card.selected .preset-icon {
+  color: #3b82f6;
+}
+
+.preset-card h3 {
+  color: #e0e0e0;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.preset-card p {
+  color: #777;
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.preset-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.cap-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #222;
+  border-radius: 10px;
+  color: #888;
+}
+
+.preset-card.selected .cap-tag {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+/* Review grid */
+.review-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.review-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #222;
+}
+
+.review-item:last-child {
+  border-bottom: none;
+}
+
+.review-label {
+  color: #888;
+  font-size: 14px;
+}
+
+.review-value {
+  color: #e0e0e0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Navigation */
+.setup-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-spacer {
+  flex: 1;
+}
+
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.nav-btn.back {
+  background: #1a1a1a;
+  color: #aaa;
+  border: 1px solid #333;
+}
+
+.nav-btn.back:hover {
+  background: #222;
+}
+
+.nav-btn.next {
+  background: #1e40af;
+  color: #fff;
+}
+
+.nav-btn.next:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.nav-btn.next:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.nav-btn.launch {
+  background: #166534;
+  color: #fff;
+  font-weight: 600;
+}
+
+.nav-btn.launch:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.nav-btn.launch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Spinner animation */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Restart overlay */
+.setup-restart-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  color: #fff;
+  z-index: 1000;
+}
+
+.setup-restart-overlay h2 {
+  font-size: 24px;
+}
+
+.setup-restart-overlay p {
+  color: #888;
+  font-size: 16px;
+}

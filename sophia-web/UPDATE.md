@@ -36,7 +36,7 @@ The server now reads from your main `.env` file:
 ```env
 LLM_API_BASE=http://192.168.2.94:1234/v1
 LLM_API_KEY=not-needed
-EXTRACTION_MODEL=openai/gpt-oss-20b
+EXTRACTION_MODEL=zai-org/glm-4.7-flash
 ```
 
 ## Architecture Now
@@ -68,7 +68,7 @@ User → React Client (WebSocket)
    ```
    🚀 Server running on http://localhost:3001
    🐍 Python API: http://localhost:8000
-   🤖 LLM: http://192.168.2.94:1234/v1 (openai/gpt-oss-20b)
+   🤖 LLM: http://192.168.2.94:1234/v1 (zai-org/glm-4.7-flash)
    ```
 
 3. **Monitor chat flow:**

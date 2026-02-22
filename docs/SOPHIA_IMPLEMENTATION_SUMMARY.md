@@ -148,7 +148,7 @@ Uses existing `.env` file with new additions:
 # LLM Configuration (existing)
 LLM_API_BASE=http://192.168.2.94:1234/v1
 LLM_API_KEY=not-needed
-EXTRACTION_MODEL=openai/gpt-oss-20b
+EXTRACTION_MODEL=zai-org/glm-4.7-flash
 
 # New: Web Tools
 SEARXNG_URL=http://192.168.2.94:8088

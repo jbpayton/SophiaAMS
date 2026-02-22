@@ -209,7 +209,7 @@ Sophia: [Provides detailed summary from Wikipedia article]
 **Configuration:**
 - Port: 5001
 - LLM: http://192.168.2.94:1234/v1
-- Model: openai/gpt-oss-20b
+- Model: zai-org/glm-4.7-flash
 - SearXNG: http://192.168.2.94:8088
 - Memory: Qdrant vector database
 

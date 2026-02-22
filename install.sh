@@ -281,8 +281,8 @@ configure_environment() {
     read -p "LLM API Key [not-needed]: " llm_api_key
     llm_api_key=${llm_api_key:-not-needed}
 
-    read -p "LLM Model [openai/gpt-oss-20b]: " llm_model
-    llm_model=${llm_model:-openai/gpt-oss-20b}
+    read -p "LLM Model [zai-org/glm-4.7-flash]: " llm_model
+    llm_model=${llm_model:-zai-org/glm-4.7-flash}
 
     # SearXNG Configuration
     echo -e "\n${YELLOW}Search Configuration:${NC}"

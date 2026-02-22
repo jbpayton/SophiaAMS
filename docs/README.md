@@ -1,320 +1,179 @@
 # SophiaAMS
-**Associative Semantic Memory System with REST API**
+**Associative Semantic Memory System — An autonomous AI agent with persistent knowledge**
 
-## Overview
+SophiaAMS is an event-driven AI agent built on a semantic knowledge graph. It combines conversational memory, goal-driven autonomy, web research skills, and a modern React frontend into a single system that learns and grows from every interaction.
 
-SophiaAMS is an intelligent memory system for LLM-based applications featuring conversation processing, document ingestion, and semantic retrieval. It transforms conversations and documents into a knowledge graph of semantic triples, enabling natural memory-aware AI interactions.
+![Knowledge Graph](Screenshots/KnowledgeGraph.png)
 
-## ✨ Key Features
+![Goals Dashboard](Screenshots/Goals.png)
 
-- **🗨️ Conversational Memory**: Automatically processes chat conversations into semantic knowledge
-- **📄 Document Processing**: Ingests text files, web content, and documents into memory
-- **🧠 Semantic Retrieval**: Finds relevant memories using vector similarity and topic matching
-- **🎯 Goal Management**: Advanced goal system with dependencies, instrumental goals, and auto-prompt integration
-- **🌐 REST API**: FastAPI server with comprehensive endpoints for integration
-- **💻 Interactive Client**: Streamlit-based chat interface with memory visualization
-- **📊 Knowledge Exploration**: Browse topics, entities, and relationships in your knowledge graph
-- **⚡ Smart Buffering**: Server-side conversation batching for optimal performance
+## Key Features
 
-## 🚀 Quick Start
+- **Persistent Semantic Memory** — Conversations and documents are extracted into a knowledge graph of semantic triples, recalled automatically on each turn
+- **Episodic Memory** — Temporal awareness of past interactions (what happened and when)
+- **Goal System** — Hierarchical goals with dependencies, instrumental/forever goals, and autonomous goal pursuit
+- **Autonomous Mode** — The agent can work on goals independently: researching, learning, and reporting progress
+- **Skill System** — Extensible skills (web search, web reading, goal management, memory queries) loaded dynamically
+- **Code Execution** — Sandboxed Python execution in a workspace directory
+- **Setup Wizard** — Web-based first-run configuration for LLM connection, personality, and identity
+- **React Web UI** — Chat, knowledge graph visualization, goal management, and admin panels
 
-### 1. Installation
+## Quick Start
+
+### 1. Install Dependencies
 
 ```bash
-# Clone the repository
-git clone https://github.com/jbpayton/SophiaAMS.git
-cd SophiaAMS
-
-# Install dependencies
+# Python dependencies
 pip install -r requirements.txt
-pip install -r requirements_api.txt
-
-# Download spaCy model
 python -m spacy download en_core_web_sm
+
+# Web frontend
+cd sophia-web/server && npm install
+cd ../client && npm install
 ```
 
-### 2. Environment Setup
-
-Create a `.env` file with your LLM configuration:
+### 2. Launch
 
 ```bash
-LLM_API_BASE=http://your-llm-server:1234/v1
-LLM_API_KEY=your-api-key
-EXTRACTION_MODEL=your-model-name
+python main.py
 ```
 
-### 3. Launch the System
+On first run, a **setup wizard** opens in your browser to configure:
+- Agent and user names
+- LLM connection (any OpenAI-compatible API)
+- Personality preset (Magician, Scholar, Companion, or Custom)
+
+After setup, `python main.py` launches the full system — Python backend + web frontend together.
+
+Open **http://localhost:3000** to access the UI.
+
+### 3. Manual Configuration (alternative)
+
+Copy `env_example` to `.env`, edit the values, then create a `.setup_complete` file to skip the wizard:
 
 ```bash
-# Start the API server
-python api_server.py
-
-# In another terminal, start the Streamlit client
-streamlit run streamlit_client.py
+cp env_example .env
+# Edit .env with your LLM settings
+echo done > .setup_complete
+python main.py
 ```
 
-Open http://localhost:8501 in your browser to access the interactive interface!
-
-## 🏗️ Architecture
-
-### Components
-
-- **API Server** (`api_server.py`): FastAPI REST endpoints for memory operations
-- **Streamlit Client** (`streamlit_client.py`): Interactive web interface for chat and exploration
-- **AssociativeSemanticMemory**: Core memory processing with LLM integration
-- **VectorKnowledgeGraph**: Qdrant-powered vector storage for semantic triples
-- **ConversationProcessor**: Transforms chat messages into knowledge triples
-
-### Data Flow
+## Architecture
 
 ```
-Chat Input → Memory Retrieval → LLM Response → Knowledge Storage
-     ↑                ↓                 ↓              ↓
-User Interface ← Memory Context ← Response Gen. → Triple Extraction
+python main.py
+    ├── EventBus (async priority queue)
+    ├── EventProcessor (routes events → agent)
+    ├── SophiaAgent (LLM + memory + skills + code runner)
+    ├── Adapters
+    │   ├── WebUI (HTTP/WebSocket)
+    │   ├── Scheduler (cron-like jobs)
+    │   ├── Goal Engine (autonomous goal pursuit)
+    │   └── Telegram (optional)
+    ├── FastAPI server (port 5001)
+    ├── Node.js API proxy (port 3001)
+    └── Vite React dev server (port 3000)
 ```
 
-## 💬 Usage Examples
+### Core Components
 
-### Interactive Chat Interface
+| Component | File | Purpose |
+|-----------|------|---------|
+| Entry point | `main.py` | Bootstraps everything, first-run detection |
+| Agent orchestrator | `sophia_agent.py` | Creates per-session agent loops |
+| Agent loop | `agent_loop.py` | Turn-by-turn LLM interaction with tool use |
+| LLM client | `llm_client.py` | OpenAI-compatible API wrapper |
+| Memory | `AssociativeSemanticMemory.py` | Semantic triple storage and retrieval |
+| Knowledge graph | `VectorKnowledgeGraph.py` | Qdrant vector DB layer |
+| Episodic memory | `EpisodicMemory.py` | Temporal interaction tracking |
+| Stream monitor | `stream_monitor.py` | Auto-recall and memory ingestion middleware |
+| Event bus | `event_bus.py` | Async priority event queue |
+| Event processor | `event_processor.py` | Event routing and rate limiting |
+| Code runner | `code_runner.py` | Sandboxed Python execution |
+| Skill loader | `skill_loader.py` | Dynamic skill discovery and loading |
+| Setup wizard | `setup_server.py` | First-run configuration API |
+| Persona template | `persona_template.txt` | Externalized system prompt |
+| Personality presets | `personality_presets.py` | Magician/Scholar/Companion/Custom |
+| Config | `sophia_config.yaml` | Adapter and agent settings |
 
-The Streamlit client provides:
-- **Real-time chat** with memory-aware responses
-- **Memory visualization** showing retrieved context
-- **File upload** for document ingestion
-- **Knowledge exploration** of topics and entities
+### Memory System
 
-### REST API Usage
-
-```python
-import requests
-
-# Query memory
-response = requests.post("http://localhost:8000/query", json={
-    "text": "What did we discuss about AI?",
-    "limit": 10,
-    "return_summary": True
-})
-
-# Ingest conversation
-response = requests.post("http://localhost:8000/ingest/conversation", json={
-    "messages": [
-        {"role": "user", "content": "I love machine learning"},
-        {"role": "assistant", "content": "That's great! What aspects interest you most?"}
-    ],
-    "session_id": "user123"
-})
-
-# Upload document
-response = requests.post("http://localhost:8000/ingest/document", json={
-    "text": "Your document content here...",
-    "source": "research_paper.txt"
-})
-```
-
-### Programmatic Usage
-
-```python
-from AssociativeSemanticMemory import AssociativeSemanticMemory
-from VectorKnowledgeGraph import VectorKnowledgeGraph
-from ConversationProcessor import ConversationProcessor
-
-# Initialize system
-kgraph = VectorKnowledgeGraph()
-memory = AssociativeSemanticMemory(kgraph)
-processor = ConversationProcessor(memory)
-
-# Process conversation
-messages = [
-    {"role": "user", "content": "Tell me about quantum computing"},
-    {"role": "assistant", "content": "Quantum computing uses quantum mechanics..."}
-]
-
-result = processor.process_conversation(messages, entity_name="Assistant")
-
-# Query related information
-info = memory.query_related_information("quantum computing applications")
-print(info["summary"])
-```
-
-## 🎯 Goal Management System
-
-SophiaAMS includes a sophisticated goal management system that enables the agent to maintain and work toward objectives autonomously.
-
-### Goal Types
-
-- **Standard Goals**: Regular, completable tasks
-- **Instrumental Goals**: Ongoing strategic objectives that never complete
-- **Derived Goals**: Action items spawned from instrumental goals (auto-prioritized)
-
-### Key Features
-
-- **Dependency Management**: Goals can depend on others with automatic blocking
-- **Forever Goals**: Instrumental goals that remain "ongoing" indefinitely
-- **Auto-Prompt Integration**: High-priority and instrumental goals automatically appear in agent context
-- **Smart Suggestions**: System suggests next goal based on priority, dependencies, and type
-- **Web Interface**: Full-featured UI for creating and managing goals
-- **Hierarchical Structure**: Parent-child goal relationships
-
-### Quick Example
-
-```python
-# Create an instrumental goal (never completes)
-memory.create_goal(
-    owner="Sophia",
-    description="Continuously expand knowledge of AI",
-    priority=5,
-    goal_type="instrumental",
-    is_forever_goal=True
-)
-
-# Create a derived goal (auto-prioritized)
-memory.create_goal(
-    owner="Sophia",
-    description="Study transformer architecture",
-    priority=4,
-    goal_type="derived",
-    parent_goal="Continuously expand knowledge of AI"
-)
-
-# Create goal with dependencies (blocked until deps met)
-memory.create_goal(
-    owner="Sophia",
-    description="Implement full training pipeline",
-    priority=4,
-    depends_on=["Set up data processing", "Configure model architecture"]
-)
-```
-
-**See [GOAL_SYSTEM_GUIDE.md](GOAL_SYSTEM_GUIDE.md) for comprehensive documentation.**
-
-## 🌐 API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Server health check |
-| `/stats` | GET | Knowledge graph statistics |
-| `/query` | POST | Search memory for relevant information |
-| `/ingest/conversation` | POST | Process conversation messages |
-| `/ingest/document` | POST | Add document to memory |
-| `/explore/topics` | GET | Browse knowledge topics |
-| `/explore/entities` | GET | View connected entities |
-| `/conversation/buffer/{session_id}` | GET | Check conversation buffer status |
-| `/api/goals/create` | POST | Create a new goal |
-| `/api/goals/update` | POST | Update goal status or metadata |
-| `/api/goals` | GET | Query goals with filters |
-| `/api/goals/progress` | GET | Get goal statistics |
-| `/api/goals/suggestion` | GET | Get suggested next goal |
-
-See [API_README.md](API_README.md) for detailed API documentation.
-
-## 🔧 Configuration
-
-### Environment Variables
-
-- `LLM_API_BASE`: Base URL for your LLM API
-- `LLM_API_KEY`: Authentication key for LLM access
-- `EXTRACTION_MODEL`: Model name for triple extraction and summarization
-
-### Memory Settings
-
-Configure in your initialization code:
-
-```python
-# Conversation buffer settings (in api_server.py)
-BUFFER_SIZE = 5        # Process every N messages
-MIN_BUFFER_TIME = 30   # Or every 30 seconds
-
-# Query limits
-DEFAULT_LIMIT = 10     # Default retrieval limit
-CHAT_LIMIT = 10        # Auto-retrieval in chat
-```
-
-## 📊 Knowledge Graph
-
-SophiaAMS represents knowledge as semantic triples:
+Knowledge is stored as semantic triples with vector embeddings:
 
 ```
 (Subject, Predicate, Object)
-("User", "likes", "machine learning")
-("Python", "is_used_for", "AI development")
-("Assistant", "explained", "neural networks")
+("transformers", "use", "self-attention mechanism")
+("Sophia", "is learning about", "neural network architectures")
 ```
 
-Each triple includes:
-- **Vector embeddings** for semantic similarity
-- **Topics** for categorical organization
-- **Metadata** (timestamps, sources, confidence scores)
-- **Speaker attribution** for conversation context
+Retrieval combines text similarity, topic matching, and associative expansion.
 
-## 🔍 Memory Retrieval
+### Goal System
 
-The system uses multiple retrieval strategies:
+- **Standard goals** — Completable tasks with priority (1-5)
+- **Instrumental goals** — Ongoing strategic objectives that never complete
+- **Derived goals** — Auto-spawned from instrumental goals
+- **Dependencies** — Goals can block other goals until completed
 
-1. **Text Similarity**: Vector search against stored content
-2. **Topic Matching**: Keyword-based topic filtering
-3. **Associative Expansion**: Multi-hop relationship traversal
-4. **LLM Summarization**: Intelligent summary generation
+See [GOAL_SYSTEM_GUIDE.md](GOAL_SYSTEM_GUIDE.md) for details.
 
-## 🛠️ Development
+## Configuration
 
-### Project Structure
+### Environment Variables (`.env`)
 
-```
-SophiaAMS/
-├── api_server.py              # FastAPI REST server
-├── streamlit_client.py        # Interactive web interface
-├── AssociativeSemanticMemory.py  # Core memory system
-├── VectorKnowledgeGraph.py    # Vector storage layer
-├── ConversationProcessor.py   # Chat message processing
-├── MemoryExplorer.py         # Knowledge graph exploration
-├── tests/                    # Test suite
-└── docs/                     # Additional documentation
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_API_BASE` | `http://localhost:1234/v1` | OpenAI-compatible API endpoint |
+| `LLM_API_KEY` | `not-needed` | API key (use `not-needed` for local LLMs) |
+| `LLM_MODEL` | — | Model name |
+| `LLM_MAX_TOKENS` | `16000` | Max generation tokens |
+| `AGENT_PORT` | `5001` | Python backend port |
+| `AGENT_NAME` | `Sophia` | Agent identity |
+| `USER_NAME` | `User` | User identity |
+| `AGENT_TEMPERATURE` | `0.7` | LLM temperature |
+| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
 
-### Testing
+### Adapter Configuration (`sophia_config.yaml`)
+
+Enable/disable adapters (WebUI, Telegram, Scheduler, Goal Engine) and set parameters like rate limits, cooldowns, and scheduled jobs.
+
+## Testing
 
 ```bash
-# Run test suite
-python -m pytest tests/
+# Unit tests
+python -m pytest tests/ -q
 
-# Test specific components
-python -m pytest tests/test_conversation_processor.py
+# E2E tests (requires running LLM)
+python tests/e2e_scenarios.py
+
+# Full scored report
+python tests/run_report.py --with-e2e
 ```
 
-## 📚 Dependencies
+## API Endpoints
 
-### Core Dependencies
-- `fastapi`: REST API framework
-- `streamlit`: Interactive web interface
-- `sentence-transformers`: Embedding generation
-- `qdrant-client`: Vector database
-- `openai`: LLM integration
-- `spacy`: Natural language processing
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/stats` | GET | Knowledge graph statistics |
+| `/chat/{session_id}` | POST | Send a message |
+| `/chat/{session_id}/stream` | POST | Streaming chat (SSE) |
+| `/query` | POST | Search memory |
+| `/ingest/document` | POST | Ingest a document |
+| `/explore/topics` | GET | Browse topics |
+| `/explore/entities` | GET | Browse entities |
+| `/explore/overview` | GET | Memory overview |
+| `/api/goals` | GET | List goals |
+| `/api/goals/create` | POST | Create a goal |
+| `/api/goals/update` | POST | Update a goal |
+| `/api/goals/suggestion` | GET | Get next suggested goal |
+| `/api/autonomous/start` | POST | Start autonomous mode |
+| `/api/autonomous/stop` | POST | Stop autonomous mode |
 
-### Optional Dependencies
-- `trafilatura`: Web content extraction
-- `tiktoken`: Token counting and chunking
-- `networkx`: Graph analysis
-- `matplotlib`: Visualization
+## License
 
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/jbpayton/SophiaAMS/issues)
-- **Documentation**: [API_README.md](API_README.md)
-- **Development Notes**: [DEVELOPMENT_NOTES.md](DEVELOPMENT_NOTES.md)
+This project is licensed under the MIT License.
 
 ---
 
-*SophiaAMS - Intelligent memory for the age of AI* 🧠✨
+*SophiaAMS — Persistent memory for autonomous AI agents*

@@ -134,7 +134,7 @@ The agent server uses the **same LLM configuration** as your existing setup in `
 # LLM Configuration (shared with api_server and sophia-web)
 LLM_API_BASE=http://192.168.2.94:1234/v1
 LLM_API_KEY=not-needed
-EXTRACTION_MODEL=openai/gpt-oss-20b
+EXTRACTION_MODEL=zai-org/glm-4.7-flash
 EXTRACTION_MAX_TOKENS=8192
 
 # Agent Configuration

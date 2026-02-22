@@ -1,6 +1,8 @@
 import os
 import json
+import re
 import time
+import logging
 from typing import Dict, List, Optional, Union
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -10,6 +12,66 @@ from schemas import TRIPLE_EXTRACTION_SCHEMA
 
 # Load environment variables
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+
+def _extract_json(content: str) -> dict:
+    """
+    Robustly extract JSON from LLM output that may contain chain-of-thought,
+    <think> blocks, markdown fences, or other preamble before the actual JSON.
+
+    Strategy (in order):
+    1. Strip <think>...</think> blocks
+    2. Extract from ```json fences
+    3. Find the last top-level JSON object in the text
+    4. Fall back to empty triples
+    """
+    # 1. Strip <think>...</think> blocks (greedy — remove all of them)
+    cleaned = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+
+    # 2. Try markdown ```json ... ``` fences
+    fence_match = re.search(r'```(?:json)?\s*\n?(.*?)```', cleaned, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Try direct parse (works when content is pure JSON)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # 4. Find the last { ... } block (models often put reasoning before JSON)
+    #    We search from the end to get the actual JSON, not a stray { in reasoning.
+    brace_depth = 0
+    json_end = -1
+    json_start = -1
+    for i in range(len(cleaned) - 1, -1, -1):
+        ch = cleaned[i]
+        if ch == '}':
+            if brace_depth == 0:
+                json_end = i
+            brace_depth += 1
+        elif ch == '{':
+            brace_depth -= 1
+            if brace_depth == 0 and json_end != -1:
+                json_start = i
+                break
+
+    if json_start != -1 and json_end != -1:
+        candidate = cleaned[json_start:json_end + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    # 5. Give up
+    logger.warning("Could not extract JSON from LLM response (%d chars). Returning empty triples.", len(content))
+    return {"triples": []}
+
 
 def extract_triples_from_string(
     text: str, 
@@ -111,49 +173,14 @@ def extract_triples_from_string(
         model=os.getenv('EXTRACTION_MODEL', 'gemma-3-4b-it-qat'),
         messages=[{"role": "user", "content": prompt}],
         temperature=0.0,
-        max_tokens=extraction_max_tokens
+        max_tokens=extraction_max_tokens,
+        extra_body={"enable_thinking": False},  # LM Studio: skip chain-of-thought
     )
     
     # Parse the response
-    try:        
+    try:
         content = response.choices[0].message.content
-        if content:
-            # Attempt to strip <think>...</think> block if present
-            think_start_tag = "<think>"
-            think_end_tag = "</think>"
-            if content.strip().startswith(think_start_tag) and think_end_tag in content:
-                think_end_index = content.rfind(think_end_tag)
-                json_content_start = think_end_index + len(think_end_tag)
-                actual_json_content = content[json_content_start:].strip()
-                if actual_json_content:
-                    # Found JSON after </think>
-                    result = json.loads(actual_json_content)
-                else:
-                    # Nothing after </think>; attempt to parse JSON *inside* the think block
-                    think_inner = content[len(think_start_tag):think_end_index].strip()
-                    try:
-                        result = json.loads(think_inner)
-                    except Exception:
-                        print("Warning: Could not parse JSON inside <think> block. Returning empty triples.")
-                        result = {"triples": []}
-
-            else: # No <think> block detected, try to parse directly
-                # Strip markdown code blocks if present
-                if content.strip().startswith('```json') and content.strip().endswith('```'):
-                    json_start = content.find('```json') + 7
-                    json_end = content.rfind('```')
-                    actual_json_content = content[json_start:json_end].strip()
-                    result = json.loads(actual_json_content)
-                elif content.strip().startswith('```') and content.strip().endswith('```'):
-                    # Handle generic code blocks
-                    json_start = content.find('```') + 3
-                    json_end = content.rfind('```')
-                    actual_json_content = content[json_start:json_end].strip()
-                    result = json.loads(actual_json_content)
-                else:
-                    result = json.loads(content)
-        else:
-            result = {"triples": []}
+        result = _extract_json(content) if content else {"triples": []}
         
         timestamp = timestamp or time.time()
 
@@ -224,8 +251,8 @@ def extract_triples_from_string(
         
         return extraction_result
     except Exception as e:
-        print(f"Error parsing response: {e}")
-        print(f"Raw response: {response.choices[0].message.content}")
+        logger.error("Error parsing extraction response: %s", e)
+        logger.debug("Raw response: %s", response.choices[0].message.content[:500] if response.choices else "(empty)")
         return {
             "triples": [],
             "source": source,

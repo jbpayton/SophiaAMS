@@ -218,7 +218,7 @@ Client Settings → Chat Message → Server → Python API → Memory Storage
 ```
 🚀 Server running on http://localhost:3001
 🐍 Python API: http://localhost:8000
-🤖 LLM: http://192.168.2.94:1234/v1 (openai/gpt-oss-20b)
+🤖 LLM: http://192.168.2.94:1234/v1 (zai-org/glm-4.7-flash)
 
 📱 Client connected: abc123...
 [abc123] Chat message received from Joey: hello

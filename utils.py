@@ -1,5 +1,7 @@
+import io
 import logging
 import os
+import sys
 from typing import Optional
 
 def setup_logging(debug_mode: bool = False, log_file: Optional[str] = None):
@@ -7,16 +9,18 @@ def setup_logging(debug_mode: bool = False, log_file: Optional[str] = None):
     # Set root logger to INFO by default, DEBUG only if explicitly requested
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
-    
+
     # Clear any existing handlers
     root_logger.handlers = []
-    
+
     # Create formatter
     log_format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
     formatter = logging.Formatter(log_format)
-    
-    # Add console handler - always show INFO and above
-    console_handler = logging.StreamHandler()
+
+    # Add console handler with UTF-8 encoding to avoid Windows cp1252 errors
+    # on characters like ★ (U+2605) or → (U+2192)
+    utf8_stream = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    console_handler = logging.StreamHandler(stream=utf8_stream)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(logging.INFO)
     root_logger.addHandler(console_handler)

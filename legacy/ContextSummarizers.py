@@ -42,7 +42,8 @@ def summarize_messages(client, messages, start_index, end_index):
         max_tokens=150,
         top_p=1,
         frequency_penalty=0,
-        presence_penalty=0
+        presence_penalty=0,
+        extra_body={"enable_thinking": False},
     )
 
     # Extract the summary from the API response
@@ -68,7 +69,8 @@ def summarize_verbose(client, input_string, start_index, end_index):
         max_tokens=1000,
         top_p=1,
         frequency_penalty=0,
-        presence_penalty=0
+        presence_penalty=0,
+        extra_body={"enable_thinking": False},
     )
 
     # Extract the summary from the API response
@@ -107,6 +109,7 @@ Summary:"""
             model=os.getenv('SUMMARY_MODEL', 'gemma-3-4b-it-qat'),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,  # Lower temperature for more focused summaries
+            extra_body={"enable_thinking": False},
         )
         
         content = response.choices[0].message.content

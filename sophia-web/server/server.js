@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import { OpenAI } from 'openai';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,13 +28,58 @@ const llmClient = new OpenAI({
   apiKey: process.env.LLM_API_KEY || 'not-needed'
 });
 
-const LLM_MODEL = process.env.EXTRACTION_MODEL || 'openai/gpt-oss-20b';
+const LLM_MODEL = process.env.EXTRACTION_MODEL || 'zai-org/glm-4.7-flash';
 
 app.use(cors());
 app.use(express.json());
 
 // Store active sessions
 const sessions = new Map();
+
+// Setup wizard API routes
+const SETUP_SENTINEL = path.join(__dirname, '..', '..', '.setup_complete');
+
+app.get('/api/setup/status', (req, res) => {
+  // Check the sentinel file directly — no proxy needed
+  const exists = fs.existsSync(SETUP_SENTINEL);
+  res.json({ setup_complete: exists });
+});
+
+app.get('/api/setup/presets', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/setup/presets`);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/setup/validate-llm', async (req, res) => {
+  try {
+    const response = await axios.post(`${AGENT_API}/api/setup/validate-llm`, req.body, { timeout: 20000 });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/setup/validate-embedding', async (req, res) => {
+  try {
+    const response = await axios.post(`${AGENT_API}/api/setup/validate-embedding`, req.body, { timeout: 30000 });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/setup/complete', async (req, res) => {
+  try {
+    const response = await axios.post(`${AGENT_API}/api/setup/complete`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Proxy endpoints to Python API
 app.get('/api/health', async (req, res) => {

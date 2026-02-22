@@ -207,7 +207,7 @@ OPENAI_API_KEY=not-needed
 
 ### Optional
 ```env
-LLM_MODEL=openai/gpt-oss-20b
+LLM_MODEL=zai-org/glm-4.7-flash
 SEARXNG_URL=http://localhost:8088
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 LOG_LEVEL=INFO

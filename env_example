@@ -1,27 +1,47 @@
-# Local LLM Configuration
-LOCAL_TEXTGEN_API_BASE=http://localhost:5000/v1
-LOCAL_TEXTGEN_API_KEY=your-api-key-here
+# ==============================================================================
+# SophiaAMS v2 Configuration
+# ==============================================================================
 
-# Embedding Model Configuration
+# LLM Configuration (any OpenAI-compatible endpoint)
+LLM_API_BASE=http://localhost:1234/v1
+LLM_API_KEY=not-needed
+LLM_MODEL=zai-org/glm-4.7-flash
+LLM_MAX_TOKENS=16000
+
+# Task-specific models (optional — defaults to LLM_MODEL)
+SUMMARY_MODEL=liquid/lfm2.5-1.2b
+EXTRACTION_MODEL=zai-org/glm-4.7-flash
+VERBOSE_SUMMARY_MODEL=liquid/lfm2.5-1.2b
+EXTRACTION_MAX_TOKENS=16000
+SUMMARY_MAX_TOKENS=16000
+
+# Embedding Model
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 EMBEDDING_DIM=384
 
-# Milvus Configuration
-MILVUS_HOST=127.0.0.1
-MILVUS_PORT=19530
-MILVUS_COLLECTION_NAME=knowledge_graph
-
-# LLM Configuration
-LLM_API_BASE=http://localhost:1234/v1
-LLM_API_KEY=not-needed
-LLM_MODEL=openai/gpt-oss-20b
-
-# Optional: Different models for different tasks
-SUMMARY_MODEL=openai/gpt-oss-20b
-EXTRACTION_MODEL=openai/gpt-oss-20b
-VERBOSE_SUMMARY_MODEL=openai/gpt-oss-20b
-EXTRACTION_MAX_TOKENS=8192
-SUMMARY_MAX_TOKENS=4096
-
-# Tool URLs
+# Web Search (optional — SearXNG instance)
 SEARXNG_URL=http://localhost:8088
+
+# Server
+AGENT_PORT=5001
+
+# Agent Identity
+AGENT_NAME=Sophia
+USER_NAME=Joey
+
+# Agent Settings
+AGENT_TEMPERATURE=0.7
+WORKSPACE_PATH=./workspace
+SKILLS_PATH=./skills
+
+# Memory Settings
+MEMORY_DATA_PATH=./data
+VECTOR_DB_PATH=./VectorKnowledgeGraphData
+STREAM_MONITOR_IDLE_SECONDS=30
+AUTO_RECALL_LIMIT=10
+
+# Telegram Bot (optional — enable in sophia_config.yaml)
+TELEGRAM_BOT_TOKEN=
+
+# Config file path (optional — defaults to ./sophia_config.yaml)
+SOPHIA_CONFIG_PATH=./sophia_config.yaml

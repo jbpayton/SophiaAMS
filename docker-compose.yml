@@ -13,13 +13,16 @@ services:
       - episodic_memory:/app/data/episodic_memory
       - vector_data:/app/VectorKnowledgeGraphData
       - agent_logs:/app/logs
+      - workspace:/app/workspace
+      - skills_learned:/app/skills/learned
     environment:
-      - OPENAI_API_BASE=${OPENAI_API_BASE:-http://host.docker.internal:1234/v1}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}
       - LLM_API_BASE=${LLM_API_BASE:-http://host.docker.internal:1234/v1}
       - LLM_API_KEY=${LLM_API_KEY:-not-needed}
+      - LLM_MODEL=${LLM_MODEL:-zai-org/glm-4.7-flash}
       - SEARXNG_URL=${SEARXNG_URL:-http://host.docker.internal:8088}
       - AGENT_PORT=5001
+      - WORKSPACE_PATH=/app/workspace
+      - SKILLS_PATH=/app/skills
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     # DNS servers for internet connectivity
     dns:
@@ -101,4 +104,8 @@ volumes:
   vector_data:
     driver: local
   agent_logs:
+    driver: local
+  workspace:
+    driver: local
+  skills_learned:
     driver: local

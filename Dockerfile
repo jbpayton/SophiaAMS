@@ -48,12 +48,15 @@ RUN mkdir -p /app/models && \
     python -c "from sentence_transformers import SentenceTransformer; model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); model.save('/app/models/all-MiniLM-L6-v2')"
 
 # Copy all application Python files
-# Using wildcard to catch all modules to avoid missing dependencies
 COPY *.py .
 
-# Create directories for persistent data
+# Copy skills directory
+COPY skills/ ./skills/
+
+# Create directories for persistent data and workspace
 RUN mkdir -p /app/data/episodic_memory \
     && mkdir -p /app/VectorKnowledgeGraphData/qdrant_data \
+    && mkdir -p /app/workspace \
     && mkdir -p /app/logs
 
 # Expose the agent server port

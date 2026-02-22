@@ -158,7 +158,7 @@ The `.env` file contains all configuration. Key settings:
 # LLM API Configuration
 LLM_API_BASE=http://localhost:1234/v1      # Your LLM API endpoint
 LLM_API_KEY=not-needed                      # API key (or placeholder)
-LLM_MODEL=openai/gpt-oss-20b                # Model name
+LLM_MODEL=zai-org/glm-4.7-flash                # Model name
 
 # For Docker (use host.docker.internal to reach host)
 OPENAI_API_BASE=http://host.docker.internal:1234/v1

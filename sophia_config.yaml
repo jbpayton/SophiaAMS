@@ -1,0 +1,22 @@
+agent:
+  name: Sophia
+  user_name: Joey
+  rate_limit_per_hour: 120
+event_sources:
+  webui:
+    enabled: true
+  telegram:
+    enabled: false
+    token: ${TELEGRAM_BOT_TOKEN}
+    allowed_chat_ids: []
+  scheduler:
+    enabled: true
+    jobs:
+    - id: goal_check
+      prompt: Check your active goals. Update progress on any that you can.
+      interval_seconds: 3600
+  goal_engine:
+    enabled: true
+    cooldown_seconds: 30
+    max_consecutive_goals: 10
+    rest_seconds: 300
