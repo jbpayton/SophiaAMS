@@ -10,15 +10,33 @@ services:
       target: base
     volumes:
       # Mount source code for hot reload
+      - ./main.py:/app/main.py
       - ./agent_server.py:/app/agent_server.py
+      - ./sophia_agent.py:/app/sophia_agent.py
+      - ./agent_loop.py:/app/agent_loop.py
+      - ./llm_client.py:/app/llm_client.py
+      - ./code_runner.py:/app/code_runner.py
+      - ./conversation_memory.py:/app/conversation_memory.py
+      - ./skill_loader.py:/app/skill_loader.py
+      - ./stream_monitor.py:/app/stream_monitor.py
+      - ./event_bus.py:/app/event_bus.py
+      - ./event_processor.py:/app/event_processor.py
+      - ./event_types.py:/app/event_types.py
+      - ./setup_server.py:/app/setup_server.py
+      - ./personality_presets.py:/app/personality_presets.py
+      - ./persona_template.txt:/app/persona_template.txt
+      - ./workspace_init.py:/app/workspace_init.py
       - ./AssociativeSemanticMemory.py:/app/AssociativeSemanticMemory.py
       - ./VectorKnowledgeGraph.py:/app/VectorKnowledgeGraph.py
       - ./EpisodicMemory.py:/app/EpisodicMemory.py
-      - ./PersistentConversationMemory.py:/app/PersistentConversationMemory.py
-      - ./autonomous_agent.py:/app/autonomous_agent.py
       - ./MemoryExplorer.py:/app/MemoryExplorer.py
-      - ./message_queue.py:/app/message_queue.py
-      - ./searxng_tool.py:/app/searxng_tool.py
+      - ./triple_extraction.py:/app/triple_extraction.py
+      - ./prompts.py:/app/prompts.py
+      - ./schemas.py:/app/schemas.py
+      - ./utils.py:/app/utils.py
+      - ./adapters:/app/adapters
+      - ./skills:/app/skills
+      - ./sophia_config.yaml:/app/sophia_config.yaml
       # Keep persistent data volumes
       - episodic_memory:/app/data/episodic_memory
       - vector_data:/app/VectorKnowledgeGraphData
@@ -32,7 +50,7 @@ services:
       - LOG_LEVEL=DEBUG
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
-    command: ["python", "-u", "agent_server.py"]
+    command: ["python", "-u", "main.py"]
 
   # Node.js Proxy Server - Development with nodemon
   sophia-server:
