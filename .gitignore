@@ -169,6 +169,9 @@ cython_debug/
 #.idea/
 .claude/settings.local.json
 
+# Skill env config (contains user-specific values)
+skill_env_config.json
+
 # Setup wizard sentinel
 .setup_complete
 
