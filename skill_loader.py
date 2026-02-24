@@ -82,9 +82,33 @@ class SkillLoader:
             path=skill_dir,
         )
 
+    def _extract_examples(self, skill_dir: str) -> List[str]:
+        """Extract ```run code blocks from a SKILL.md as usage examples."""
+        skill_md = os.path.join(skill_dir, "SKILL.md")
+        try:
+            with open(skill_md, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError:
+            return []
+
+        examples = []
+        i = 0
+        while i < len(content):
+            start = content.find("```run", i)
+            if start == -1:
+                break
+            code_start = content.index("\n", start) + 1
+            end = content.find("```", code_start)
+            if end == -1:
+                break
+            examples.append(content[code_start:end].strip())
+            i = end + 3
+        return examples
+
     def descriptions(self) -> str:
         """
         Format all skills as a string for inclusion in the system prompt.
+        Includes the first usage example so the LLM knows the correct calling pattern.
         """
         if not self._skills:
             return "No skills available."
@@ -92,8 +116,13 @@ class SkillLoader:
         lines = ["Available skills:"]
         for skill in sorted(self._skills.values(), key=lambda s: s.name):
             lines.append(f"  - {skill.name}: {skill.description}")
+            examples = self._extract_examples(skill.path)
+            if examples:
+                lines.append(f"    Example: ```run")
+                lines.append(f"    {examples[0]}")
+                lines.append(f"    ```")
             skill_md = os.path.join(skill.path, "SKILL.md")
-            lines.append(f"    Read: {skill_md}")
+            lines.append(f"    Full docs: {skill_md}")
         return "\n".join(lines)
 
     def get_skill(self, name: str) -> Optional[Skill]:

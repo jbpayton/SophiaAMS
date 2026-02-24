@@ -5,8 +5,9 @@ import GraphPage from './pages/GraphPage'
 import AdminPage from './pages/AdminPage'
 import GoalsPage from './pages/GoalsPage'
 import AutonomousPage from './pages/AutonomousPage'
+import SettingsPage from './pages/SettingsPage'
 import SetupPage from './pages/SetupPage'
-import { Brain, MessageSquare, Network, Settings, Target, Bot, Loader } from 'lucide-react'
+import { Brain, MessageSquare, Network, Settings, Target, Activity, Sliders, Loader } from 'lucide-react'
 import './App.css'
 
 function App() {
@@ -88,12 +89,21 @@ function App() {
             </Link>
 
             <Link
-              to="/autonomous"
-              className={`nav-link ${currentPath === '/autonomous' ? 'active' : ''}`}
-              onClick={() => setCurrentPath('/autonomous')}
+              to="/activity"
+              className={`nav-link ${currentPath === '/activity' ? 'active' : ''}`}
+              onClick={() => setCurrentPath('/activity')}
             >
-              <Bot size={20} />
-              <span>Autonomous</span>
+              <Activity size={20} />
+              <span>Activity</span>
+            </Link>
+
+            <Link
+              to="/settings"
+              className={`nav-link ${currentPath === '/settings' ? 'active' : ''}`}
+              onClick={() => setCurrentPath('/settings')}
+            >
+              <Sliders size={20} />
+              <span>Settings</span>
             </Link>
 
             <Link
@@ -112,7 +122,9 @@ function App() {
             <Route path="/" element={<ChatPage />} />
             <Route path="/graph" element={<GraphPage />} />
             <Route path="/goals" element={<GoalsPage />} />
+            <Route path="/activity" element={<AutonomousPage />} />
             <Route path="/autonomous" element={<AutonomousPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>

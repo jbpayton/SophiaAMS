@@ -65,17 +65,58 @@ class WebUIAdapter(EventSourceAdapter):
         logger.debug(f"[WebUIAdapter] Submitted event {event.event_id} for session {session_id}")
         return future
 
+    async def submit_streaming(self, session_id: str, content: str) -> asyncio.Queue:
+        """
+        Create an event for a streaming chat request and return a Queue
+        that receives (event_type, data) tuples in real-time.
+
+        The final item will be ("final_response", {...}) or ("error", {...}).
+        """
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        event = Event(
+            event_type=EventType.CHAT_MESSAGE,
+            payload={
+                "session_id": session_id,
+                "content": content,
+                "streaming": True,
+            },
+            priority=EventPriority.USER_DIRECT,
+            source_channel="webui",
+        )
+
+        # Store both queue and future for this event
+        self._pending[event.event_id] = queue
+        await self.bus.put(event)
+
+        logger.debug(f"[WebUIAdapter] Submitted streaming event {event.event_id} for session {session_id}")
+        return queue
+
     async def handle_response(self, event: Event, response: str) -> None:
         """
         Called by EventProcessor when the agent produces a response.
-        Resolves the Future so the HTTP handler can return.
+        Resolves the Future or signals the streaming Queue.
         """
-        future = self._pending.pop(event.event_id, None)
-        if future and not future.done():
-            future.set_result(response)
+        pending = self._pending.pop(event.event_id, None)
+        if pending is None:
+            logger.warning(
+                f"[WebUIAdapter] No pending future/queue for event {event.event_id} "
+                f"(already done or missing)"
+            )
+            return
+
+        if isinstance(pending, asyncio.Queue):
+            # Streaming mode — final_response already emitted via on_event callback
+            # Just ensure the queue gets a final signal if it hasn't already
+            try:
+                pending.put_nowait(("done", {}))
+            except asyncio.QueueFull:
+                pass
+        elif isinstance(pending, asyncio.Future) and not pending.done():
+            pending.set_result(response)
             logger.debug(f"[WebUIAdapter] Resolved future for event {event.event_id}")
         else:
             logger.warning(
-                f"[WebUIAdapter] No pending future for event {event.event_id} "
-                f"(already done or missing)"
+                f"[WebUIAdapter] Pending object already done for event {event.event_id}"
             )

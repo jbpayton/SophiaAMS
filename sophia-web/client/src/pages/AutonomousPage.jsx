@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Bot, Brain, Loader, Settings2, Play, Pause, Trash2, ChevronDown, ChevronRight, Sparkles, Wrench, Clock, Target, Zap } from 'lucide-react'
+import { Bot, Brain, Loader, Settings2, Play, Pause, Trash2, ChevronDown, ChevronRight, Sparkles, Wrench, Clock, Target, Zap, MessageSquare } from 'lucide-react'
 import './AutonomousPage.css'
 
 // Component to display collapsable thoughts (reasoning + tool calls + auto-recall)
@@ -172,15 +172,147 @@ function AutonomousIteration({ iteration, index }) {
   )
 }
 
+// Extract a short summary from activity entry for the collapsed row
+function extractSummary(entry) {
+  // For goal events, try to extract the goal name from the full content
+  const content = entry.content_full || entry.content_preview || ''
+  const response = entry.response_full || entry.response_preview || ''
+
+  let goalName = null
+  const goalMatch = content.match(/TARGET GOAL:\s*(.+)/i) || content.match(/Goal:\s*(.+)/i)
+  if (goalMatch) {
+    goalName = goalMatch[1].trim().substring(0, 80)
+  }
+
+  // Get first meaningful sentence of the response as preview
+  let responseSummary = ''
+  if (response) {
+    // Strip code blocks and markdown headers
+    const cleaned = response.replace(/```[\s\S]*?```/g, '').replace(/^#+\s+/gm, '').trim()
+    // Take first sentence or first line
+    const firstSentence = cleaned.match(/^[^.!?\n]+[.!?]/)
+    responseSummary = firstSentence ? firstSentence[0].trim() : cleaned.split('\n')[0].substring(0, 120)
+  }
+
+  return { goalName, responseSummary }
+}
+
+// Activity entry for the unified feed
+function ActivityEntry({ entry, index }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [showFullInput, setShowFullInput] = useState(false)
+
+  const sourceIcons = {
+    webui: <MessageSquare size={14} />,
+    telegram: <Zap size={14} />,
+    goal: <Target size={14} />,
+    self: <Bot size={14} />,
+    cron: <Clock size={14} />,
+  }
+
+  const formatTime = (ts) => {
+    const d = new Date(ts * 1000)
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+
+  // Build thoughts object for ThoughtsDisplay if available
+  const thoughts = entry.thoughts && entry.thoughts.length > 0 ? {
+    reasoning: entry.thoughts.filter(t => t.type === 'reasoning').map(t => t.data.text),
+    toolCalls: entry.thoughts.filter(t => t.type === 'tool_start').map((t, i) => {
+      const endEvent = entry.thoughts.find(e => e.type === 'tool_end' || e.type === 'tool_error')
+      return {
+        id: `tool-${i}`,
+        tool: t.data.tool,
+        input: t.data.input,
+        output: endEvent?.data?.output || '',
+        status: endEvent?.type === 'tool_error' ? 'error' : 'completed',
+      }
+    }),
+    autoRecall: entry.thoughts.find(t => t.type === 'auto_recall')?.data?.memories || null,
+  } : null
+
+  const hasThoughts = thoughts && (thoughts.reasoning.length > 0 || thoughts.toolCalls.length > 0 || thoughts.autoRecall)
+  const { goalName, responseSummary } = extractSummary(entry)
+
+  // Determine display label for event type
+  const eventLabel = goalName
+    ? goalName
+    : entry.event_type === 'GOAL_PURSUIT'
+      ? 'Goal Pursuit'
+      : entry.event_type
+
+  const fullContent = entry.content_full || entry.content_preview || ''
+  const fullResponse = entry.response_full || entry.response_preview || ''
+
+  return (
+    <div className={`autonomous-iteration ${isExpanded ? 'expanded' : ''}`}>
+      <div className="iteration-header" onClick={() => setIsExpanded(!isExpanded)}>
+        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <div className="iteration-meta">
+          <span className="iteration-time">{formatTime(entry.timestamp)}</span>
+          <span className={`iteration-source ${entry.source_channel}`}>
+            {sourceIcons[entry.source_channel] || <Zap size={14} />}
+            {entry.source_channel}
+          </span>
+          <span className="iteration-number">{eventLabel}</span>
+          {hasThoughts && (
+            <span className="thoughts-badge" title="Has agent thoughts">
+              <Brain size={12} />
+              {thoughts.toolCalls.length > 0 && ` ${thoughts.toolCalls.length} tool${thoughts.toolCalls.length !== 1 ? 's' : ''}`}
+            </span>
+          )}
+        </div>
+        {!isExpanded && responseSummary && (
+          <div className="iteration-summary">{responseSummary}</div>
+        )}
+      </div>
+
+      {isExpanded && (
+        <div className="iteration-content">
+          {/* Prompt / Input section */}
+          <div className="iteration-section">
+            <h4>
+              <Sparkles size={14} /> Prompt / Input
+              {fullContent.length > 200 && (
+                <button
+                  className="toggle-full-btn"
+                  onClick={(e) => { e.stopPropagation(); setShowFullInput(!showFullInput) }}
+                >
+                  {showFullInput ? 'Show less' : 'Show full'}
+                </button>
+              )}
+            </h4>
+            <div className="iteration-prompt">
+              <pre>{showFullInput ? fullContent : entry.content_preview}</pre>
+            </div>
+          </div>
+
+          {/* Agent Thoughts */}
+          {hasThoughts && (
+            <ThoughtsDisplay thoughts={thoughts} autoExpand={true} />
+          )}
+
+          {/* Response */}
+          <div className="iteration-section">
+            <h4>Response:</h4>
+            <div className="iteration-response">
+              {fullResponse}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AutonomousPage() {
   const [sessionId, setSessionId] = useState(null)
   const [isRunning, setIsRunning] = useState(false)
   const [status, setStatus] = useState(null)
-  const [history, setHistory] = useState([])
+  const [activityFeed, setActivityFeed] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [autoScroll, setAutoScroll] = useState(true)
-  const historyEndRef = useRef(null)
+  const [sourceFilter, setSourceFilter] = useState('all')
 
   // Load or create session ID
   useEffect(() => {
@@ -192,31 +324,24 @@ function AutonomousPage() {
     setSessionId(storedSessionId)
   }, [])
 
-  // Poll status when running
+  // Poll activity feed
   useEffect(() => {
-    if (sessionId && isRunning) {
-      const interval = setInterval(() => {
-        fetchStatus()
-        fetchHistory()
-      }, 1000) // Poll every 1 second for near real-time updates
+    if (sessionId) {
+      fetchActivityFeed()
+      const interval = setInterval(fetchActivityFeed, 3000)
       return () => clearInterval(interval)
     }
-  }, [sessionId, isRunning])
+  }, [sessionId, sourceFilter])
 
-  // Initial fetch
+  // Poll status
   useEffect(() => {
     if (sessionId) {
       fetchStatus()
-      fetchHistory()
+      const interval = setInterval(fetchStatus, 5000)
+      return () => clearInterval(interval)
     }
   }, [sessionId])
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (autoScroll && historyEndRef.current) {
-      historyEndRef.current.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [history, autoScroll])
 
   const generateSessionId = () => {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -240,16 +365,15 @@ function AutonomousPage() {
     }
   }
 
-  const fetchHistory = async () => {
+  const fetchActivityFeed = async () => {
     try {
-      const response = await fetch(`/api/autonomous/history?sessionId=${sessionId}&limit=50`)
+      const params = new URLSearchParams({ limit: '50' })
+      if (sourceFilter !== 'all') params.set('source', sourceFilter)
+      const response = await fetch(`/api/activity/feed?${params}`)
       const data = await response.json()
-
-      if (data.success) {
-        setHistory(data.actions || [])
-      }
+      setActivityFeed(data.entries || [])
     } catch (err) {
-      console.error('Error fetching history:', err)
+      console.error('Error fetching activity feed:', err)
     }
   }
 
@@ -269,7 +393,7 @@ function AutonomousPage() {
       if (data.success) {
         setIsRunning(true)
         setStatus(data.status)
-        fetchHistory()
+        fetchActivityFeed()
       } else {
         setError(data.message || 'Failed to start')
       }
@@ -306,12 +430,6 @@ function AutonomousPage() {
     }
   }
 
-  const handleClearHistory = () => {
-    if (confirm('Clear all autonomous history? This cannot be undone.')) {
-      setHistory([])
-    }
-  }
-
   const formatUptime = (seconds) => {
     if (!seconds) return '0s'
     const hours = Math.floor(seconds / 3600)
@@ -322,6 +440,14 @@ function AutonomousPage() {
     if (minutes > 0) return `${minutes}m ${secs}s`
     return `${secs}s`
   }
+
+  const filterOptions = [
+    { key: 'all', label: 'All' },
+    { key: 'webui', label: 'Chat' },
+    { key: 'goal', label: 'Goals' },
+    { key: 'cron', label: 'Scheduled' },
+    { key: 'self', label: 'Autonomous' },
+  ]
 
   if (!sessionId) {
     return <div className="autonomous-page loading">Loading...</div>
@@ -334,8 +460,8 @@ function AutonomousPage() {
         <div className="header-left">
           <Bot size={32} />
           <div className="header-title">
-            <h1>Autonomous Mode</h1>
-            <p>Sophia working independently on her goals</p>
+            <h1>Activity</h1>
+            <p>Agent activity and autonomous operations</p>
           </div>
         </div>
         <div className="header-actions">
@@ -368,83 +494,58 @@ function AutonomousPage() {
       )}
 
       {/* Status Bar */}
-      {status && (
+      {status && isRunning && (
         <div className="status-bar">
           <div className="status-item">
-            <span className={`status-indicator ${isRunning ? 'running' : 'stopped'}`}></span>
+            <span className={`status-indicator running`}></span>
             <span className="status-label">Status:</span>
-            <span className="status-value">{isRunning ? 'Running' : 'Stopped'}</span>
+            <span className="status-value">Running</span>
           </div>
 
-          {isRunning && (
-            <>
-              <div className="status-item">
-                <Clock size={16} />
-                <span className="status-label">Uptime:</span>
-                <span className="status-value">{formatUptime(status.uptime_seconds)}</span>
-              </div>
+          <div className="status-item">
+            <Clock size={16} />
+            <span className="status-label">Uptime:</span>
+            <span className="status-value">{formatUptime(status.uptime_seconds)}</span>
+          </div>
 
-              <div className="status-item">
-                <Zap size={16} />
-                <span className="status-label">Iterations:</span>
-                <span className="status-value">{status.iteration_count}</span>
-              </div>
-
-              <div className="status-item">
-                <Target size={16} />
-                <span className="status-label">Actions:</span>
-                <span className="status-value">{status.actions_taken}</span>
-              </div>
-
-              <div className="status-item">
-                <span className="status-label">Rate:</span>
-                <span className="status-value">
-                  {status.actions_this_hour} / {status.config?.max_actions_per_hour || 120} per hour
-                </span>
-              </div>
-
-              {status.current_focus_goal && (
-                <div className="status-item focus-goal">
-                  <Target size={16} />
-                  <span className="status-label">Focus:</span>
-                  <span className="status-value">{status.current_focus_goal}</span>
-                </div>
-              )}
-            </>
+          {status.current_focus_goal && (
+            <div className="status-item focus-goal">
+              <Target size={16} />
+              <span className="status-label">Focus:</span>
+              <span className="status-value">{status.current_focus_goal}</span>
+            </div>
           )}
         </div>
       )}
 
-      {/* Controls Bar */}
+      {/* Filter Chips + Controls Bar */}
       <div className="controls-bar">
-        <label className="control-option">
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={(e) => setAutoScroll(e.target.checked)}
-          />
-          Auto-scroll to latest
-        </label>
-        <button onClick={fetchHistory} className="refresh-btn">
-          Refresh History
-        </button>
-        <button onClick={handleClearHistory} className="clear-btn" disabled={history.length === 0}>
-          <Trash2 size={16} />
-          Clear History
+        <div className="filter-chips">
+          {filterOptions.map(opt => (
+            <button
+              key={opt.key}
+              className={`filter-chip ${sourceFilter === opt.key ? 'active' : ''}`}
+              onClick={() => setSourceFilter(opt.key)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <button onClick={fetchActivityFeed} className="refresh-btn">
+          Refresh
         </button>
       </div>
 
-      {/* History */}
+      {/* Activity Feed */}
       <div className="autonomous-history">
-        {history.length === 0 && !isRunning ? (
+        {activityFeed.length === 0 ? (
           <div className="empty-state">
             <Bot size={64} />
-            <h3>No autonomous activity yet</h3>
-            <p>Click "Start" to begin autonomous mode</p>
+            <h3>No activity yet</h3>
+            <p>Send a chat message or start autonomous mode to see activity here</p>
           </div>
         ) : (
           <div className="iterations-list">
-            {/* Show "Currently Working" banner when running */}
             {isRunning && status && (
               <div className="currently-working">
                 <div className="working-header">
@@ -452,41 +553,24 @@ function AutonomousPage() {
                   <h3>Currently Working...</h3>
                 </div>
                 <div className="working-details">
-                  <p>
-                    <strong>Iteration #{status.iteration_count + 1}</strong> in progress
-                  </p>
                   {status.current_focus_goal && (
                     <p className="focus">
                       <Target size={14} />
                       Focus: {status.current_focus_goal}
                     </p>
                   )}
-                  <p className="hint">
-                    Sophia is thinking, using tools, and making progress...
-                    <br />
-                    Results will appear below once this iteration completes (~30 seconds)
-                  </p>
                 </div>
               </div>
             )}
 
-            {/* Show completed iterations */}
-            {history.length > 0 && history.map((iteration, idx) => (
-              <AutonomousIteration
-                key={idx}
-                iteration={iteration}
-                index={history.length - 1 - idx} // Reverse index for latest first
+            {activityFeed.map((entry, idx) => (
+              <ActivityEntry
+                key={entry.id || idx}
+                entry={entry}
+                index={idx}
               />
             ))}
 
-            {history.length === 0 && isRunning && (
-              <div className="waiting-first">
-                <Loader className="spinning" size={32} />
-                <p>Waiting for first iteration to complete...</p>
-              </div>
-            )}
-
-            <div ref={historyEndRef} />
           </div>
         )}
       </div>

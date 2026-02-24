@@ -5,6 +5,7 @@ LLM call -> parse ```run``` blocks -> execute -> feedback, up to max_rounds.
 
 import re
 import logging
+import threading
 from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
@@ -17,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 # Pattern to match ```run ... ``` code blocks
 _RUN_BLOCK_RE = re.compile(r"```run\s*\n(.*?)```", re.DOTALL)
+
+# Pattern to extract <think>...</think> blocks before LLMClient strips them
+_THINK_RE = re.compile(r'<think>(.*?)</think>', re.DOTALL)
 
 
 class AgentLoop:
@@ -46,23 +50,41 @@ class AgentLoop:
         self.post_process_hook = post_process_hook
         self.max_rounds = max_rounds
 
-    def chat(self, user_input: str, session_id: str = "default") -> str:
+        # Cancellation support (Feature 3: Preemption)
+        self._cancel = threading.Event()
+
+    def cancel(self):
+        """Signal the current chat() call to cancel."""
+        self._cancel.set()
+
+    def reset_cancel(self):
+        """Clear the cancellation flag."""
+        self._cancel.clear()
+
+    def _emit(self, on_event, event_type: str, data: dict):
+        """Safely emit a streaming event if callback is provided."""
+        if on_event:
+            try:
+                on_event(event_type, data)
+            except Exception as e:
+                logger.error(f"on_event callback error: {e}")
+
+    def chat(self, user_input: str, session_id: str = "default", on_event: Callable = None) -> str:
         """
         Process a user message through the agent loop.
-
-        1. Run pre_process_hook (e.g., memory recall)
-        2. Add user message to conversation
-        3. Loop: LLM call -> parse run blocks -> execute -> feed results
-        4. Run post_process_hook (e.g., save to memory)
-        5. Return final text response
 
         Args:
             user_input: The user's message
             session_id: Session identifier for hooks
+            on_event: Optional callback(event_type, data) for streaming events.
+                      Event types: auto_recall, thinking, reasoning, tool_start,
+                      tool_end, tool_error, final_response
 
         Returns:
             The agent's final text response.
         """
+        self.reset_cancel()
+
         # Pre-process hook (memory recall)
         context = ""
         if self.pre_process_hook:
@@ -70,6 +92,10 @@ class AgentLoop:
                 context = self.pre_process_hook(user_input, session_id)
             except Exception as e:
                 logger.error(f"Pre-process hook error: {e}")
+
+        # Emit auto_recall event with memory context
+        if context:
+            self._emit(on_event, "auto_recall", {"memories": context})
 
         # Add user message to conversation memory
         self.conversation_memory.add_message("user", user_input)
@@ -81,13 +107,43 @@ class AgentLoop:
         # Agent loop
         final_response = ""
         for round_num in range(self.max_rounds):
+            # Check cancellation before LLM call
+            if self._cancel.is_set():
+                final_response = "[Paused to handle your message — I'll continue this later]"
+                break
+
             messages = self._build_messages(context)
 
+            self._emit(on_event, "thinking", {"round": round_num + 1})
+
             try:
-                response = self.llm.chat(messages)
+                # Temporarily disable think stripping so we can capture raw reasoning
+                if on_event and hasattr(self.llm, 'strip_thinking'):
+                    original_strip = self.llm.strip_thinking
+                    self.llm.strip_thinking = False
+                    response = self.llm.chat(messages)
+                    self.llm.strip_thinking = original_strip
+                else:
+                    response = self.llm.chat(messages)
             except Exception as e:
                 logger.error(f"LLM error in round {round_num}: {e}")
                 final_response = f"I encountered an error: {e}"
+                self._emit(on_event, "error", {"message": str(e)})
+                break
+
+            # Extract and emit reasoning blocks before stripping
+            if on_event:
+                think_blocks = _THINK_RE.findall(response)
+                for think_content in think_blocks:
+                    think_text = think_content.strip()
+                    if think_text:
+                        self._emit(on_event, "reasoning", {"text": think_text})
+                # Now strip think tokens from response
+                response = LLMClient._strip_think_tokens(response)
+
+            # Check cancellation between rounds
+            if self._cancel.is_set():
+                final_response = "[Paused to handle your message — I'll continue this later]"
                 break
 
             # Check for run blocks
@@ -101,8 +157,17 @@ class AgentLoop:
             # Execute code blocks and collect results
             execution_results = []
             for i, code in enumerate(run_blocks):
-                result = self.runner.run(code)
-                execution_results.append(f"[Execution {i + 1}]\n{result.summary()}")
+                self._emit(on_event, "tool_start", {"tool": "code_execution", "input": code})
+
+                try:
+                    result = self.runner.run(code)
+                    result_text = result.summary()
+                    execution_results.append(f"[Execution {i + 1}]\n{result_text}")
+                    self._emit(on_event, "tool_end", {"output": result_text})
+                except Exception as e:
+                    error_text = str(e)
+                    execution_results.append(f"[Execution {i + 1}]\nError: {error_text}")
+                    self._emit(on_event, "tool_error", {"error": error_text})
 
             # Add assistant response + execution feedback to conversation
             self.conversation_memory.add_message("assistant", response)
@@ -115,6 +180,9 @@ class AgentLoop:
 
         # Record the final response in conversation
         self.conversation_memory.add_message("assistant", final_response)
+
+        # Emit final response
+        self._emit(on_event, "final_response", {"response": final_response})
 
         # Post-process hook (memory save)
         if self.post_process_hook:

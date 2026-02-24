@@ -12,10 +12,12 @@ flows through the same pipeline regardless of origin.
 """
 
 import asyncio
+import collections
 import logging
 import re
 import time
-from typing import Any, Callable, Coroutine, Dict, Optional, TYPE_CHECKING
+import uuid
+from typing import Any, Callable, Coroutine, Dict, List, Optional, TYPE_CHECKING
 
 from event_bus import EventBus
 from event_types import Event, EventPriority, EventType
@@ -43,11 +45,15 @@ class EventProcessor:
         self,
         bus: EventBus,
         sophia_chat: Callable[[str, str], str],
+        sophia_chat_streaming: Callable = None,
+        sophia_cancel_session: Callable = None,
         memory_system=None,
         rate_limit_per_hour: int = 120,
     ):
         self.bus = bus
         self.sophia_chat = sophia_chat
+        self.sophia_chat_streaming = sophia_chat_streaming
+        self.sophia_cancel_session = sophia_cancel_session
         self.memory_system = memory_system
         self.rate_limit_per_hour = rate_limit_per_hour
 
@@ -65,6 +71,13 @@ class EventProcessor:
 
         # Running flag
         self._running = False
+
+        # Activity log (Feature 2)
+        self._activity_log: collections.deque = collections.deque(maxlen=500)
+
+        # Currently processing event tracking (for preemption)
+        self._current_event: Optional[Event] = None
+        self._current_session_id: Optional[str] = None
 
     def set_goal_adapter(self, adapter: "GoalAdapter") -> None:
         """Connect the goal adapter for continuous operation."""
@@ -175,6 +188,7 @@ class EventProcessor:
 
         session_id = event.payload.get("session_id", "autonomous")
         content = event.payload.get("content", "")
+        is_streaming = event.payload.get("streaming", False)
 
         if not content:
             logger.warning(f"[EventProcessor] Empty content in event {event.event_id}")
@@ -182,18 +196,91 @@ class EventProcessor:
                 self.bus.task_done()
             return
 
+        # Track current processing for preemption
+        self._current_event = event
+        self._current_session_id = session_id
+
+        # Streaming thoughts collected during processing
+        thoughts_data = []
+
         # Call sophia.chat in a thread (it's synchronous)
         try:
             loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None, self.sophia_chat, session_id, content
-            )
+
+            if is_streaming and self.sophia_chat_streaming:
+                # Get the streaming queue from the pending map
+                from adapters.webui_adapter import WebUIAdapter
+                streaming_queue = None
+                for handler in self._response_handlers.values():
+                    adapter = getattr(handler, '__self__', None)
+                    if isinstance(adapter, WebUIAdapter):
+                        streaming_queue = adapter._pending.get(event.event_id)
+                        break
+
+                if streaming_queue and isinstance(streaming_queue, asyncio.Queue):
+                    # Create thread-safe callback that pushes to the async queue
+                    def on_event(event_type, data):
+                        thoughts_data.append({"type": event_type, "data": data})
+                        loop.call_soon_threadsafe(
+                            streaming_queue.put_nowait,
+                            (event_type, data)
+                        )
+
+                    response = await loop.run_in_executor(
+                        None,
+                        lambda: self.sophia_chat_streaming(session_id, content, on_event),
+                    )
+                else:
+                    response = await loop.run_in_executor(
+                        None, self.sophia_chat, session_id, content
+                    )
+            elif self.sophia_chat_streaming:
+                # Non-streaming request but streaming is available —
+                # use it with a collector callback to capture thoughts
+                # (reasoning, tool calls, auto-recall) without a streaming queue.
+                preempt_task = None
+                if not is_user and self.sophia_cancel_session:
+                    preempt_task = asyncio.create_task(
+                        self._preemption_monitor(session_id)
+                    )
+
+                def on_event_collector(event_type, data):
+                    thoughts_data.append({"type": event_type, "data": data})
+
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.sophia_chat_streaming(session_id, content, on_event_collector),
+                )
+
+                if preempt_task and not preempt_task.done():
+                    preempt_task.cancel()
+            else:
+                # No streaming available at all — plain chat
+                preempt_task = None
+                if not is_user and self.sophia_cancel_session:
+                    preempt_task = asyncio.create_task(
+                        self._preemption_monitor(session_id)
+                    )
+
+                response = await loop.run_in_executor(
+                    None, self.sophia_chat, session_id, content
+                )
+
+                if preempt_task and not preempt_task.done():
+                    preempt_task.cancel()
+
         except Exception as e:
             logger.error(f"[EventProcessor] Error calling sophia.chat: {e}", exc_info=True)
             response = f"Error processing event: {e}"
+        finally:
+            self._current_event = None
+            self._current_session_id = None
 
         if is_from_bus:
             self.bus.task_done()
+
+        # Log activity (Feature 2)
+        self._log_activity(event, content, response, thoughts_data)
 
         # Route response back to the source channel
         handler = self._response_handlers.get(event.source_channel)
@@ -213,6 +300,62 @@ class EventProcessor:
         # Journal goal progress after goal events
         if event.event_type == EventType.GOAL_PURSUIT:
             await self._journal_goal_progress(event, response)
+
+    # ------------------------------------------------------------------
+    # Preemption monitor (Feature 3)
+    # ------------------------------------------------------------------
+
+    async def _preemption_monitor(self, current_session_id: str) -> None:
+        """Watch the bus for USER_DIRECT events during long-running processing."""
+        while self._running and self._current_event is not None:
+            await asyncio.sleep(0.5)
+            if not self.bus.empty():
+                # Peek at the bus — if a user event is waiting, preempt
+                try:
+                    # Check without consuming
+                    next_event = self.bus.peek()
+                    if next_event and next_event.priority <= EventPriority.USER_DIRECT:
+                        logger.info(
+                            f"[EventProcessor] Preempting {self._current_event.event_type} "
+                            f"for incoming user message"
+                        )
+                        if self.sophia_cancel_session:
+                            self.sophia_cancel_session(current_session_id)
+                        return
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------------
+    # Activity log (Feature 2)
+    # ------------------------------------------------------------------
+
+    def _log_activity(self, event: Event, content: str, response: str, thoughts: list) -> None:
+        """Append a processed event to the activity log."""
+        entry = {
+            "id": uuid.uuid4().hex[:12],
+            "timestamp": time.time(),
+            "event_type": event.event_type,
+            "source_channel": event.source_channel,
+            "priority": event.priority.name,
+            "session_id": event.payload.get("session_id", "unknown"),
+            "content_preview": content[:200] if content else "",
+            "content_full": content or "",
+            "response_preview": response[:300] if response else "",
+            "response_full": response or "",
+            "thoughts": thoughts,
+            "status": "completed",
+        }
+        self._activity_log.append(entry)
+
+    def get_activity_feed(self, limit: int = 50, offset: int = 0, source_filter: str = None) -> List[dict]:
+        """Return recent activity entries, newest first."""
+        entries = list(self._activity_log)
+        entries.reverse()  # newest first
+
+        if source_filter and source_filter != "all":
+            entries = [e for e in entries if e["source_channel"] == source_filter]
+
+        return entries[offset:offset + limit]
 
     # ------------------------------------------------------------------
     # Goal journaling

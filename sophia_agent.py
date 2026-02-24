@@ -186,6 +186,36 @@ class SophiaAgent:
         loop = self._get_session(session_id)
         return loop.chat(message, session_id=session_id)
 
+    def chat_streaming(self, session_id: str, message: str, on_event=None) -> str:
+        """
+        Process a user message with streaming event callbacks.
+
+        Args:
+            session_id: Session identifier
+            message: User's message
+            on_event: Callback(event_type, data) for streaming events
+
+        Returns:
+            The agent's text response.
+        """
+        loop = self._get_session(session_id)
+        return loop.chat(message, session_id=session_id, on_event=on_event)
+
+    def cancel_session(self, session_id: str) -> None:
+        """Cancel the in-progress chat for a session (preemption)."""
+        loop = self._sessions.get(session_id)
+        if loop:
+            loop.cancel()
+            logger.info(f"Cancelled session: {session_id}")
+
+    def reload_persona(self) -> None:
+        """Re-read persona_template.txt and update the template for all future turns."""
+        self._system_prompt_template = _load_persona_template()
+        # Update all existing sessions so they pick up the change on next turn
+        for session_id, loop in self._sessions.items():
+            loop.system_prompt_template = self._system_prompt_template
+        logger.info("Persona template reloaded for all sessions")
+
     def clear_session(self, session_id: str) -> None:
         """Flush memory and remove a session."""
         self.stream_monitor.flush(session_id)

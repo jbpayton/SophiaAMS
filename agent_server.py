@@ -53,6 +53,7 @@ episodic_memory = None
 memory_explorer = None
 kgraph = None
 _webui_adapter = None  # set when launched via main.py
+_event_processor = None  # set when launched via main.py
 
 
 def set_shared_objects(
@@ -62,15 +63,17 @@ def set_shared_objects(
     memory_explorer_ref,
     kgraph_ref,
     webui_adapter_ref=None,
+    event_processor_ref=None,
 ):
     """Called by main.py to inject shared instances (avoids double init)."""
-    global sophia, memory_system, episodic_memory, memory_explorer, kgraph, _webui_adapter
+    global sophia, memory_system, episodic_memory, memory_explorer, kgraph, _webui_adapter, _event_processor
     sophia = sophia_agent
     memory_system = memory_system_ref
     episodic_memory = episodic_memory_ref
     memory_explorer = memory_explorer_ref
     kgraph = kgraph_ref
     _webui_adapter = webui_adapter_ref
+    _event_processor = event_processor_ref
     logger.info("[agent_server] Shared objects injected by main.py")
 
 
@@ -231,16 +234,29 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
 @app.post("/chat/{session_id}/stream")
 async def chat_stream(session_id: str, request: ChatRequest):
-    """Streaming endpoint that returns Server-Sent Events."""
+    """Streaming endpoint that returns Server-Sent Events with real-time thoughts."""
     async def event_generator() -> AsyncIterator[str]:
         try:
-            # Send thinking status
-            yield f"data: {json.dumps({'type': 'auto_recall', 'data': {'status': 'recalling...'}, 'timestamp': time.time()})}\n\n"
+            if _webui_adapter is None:
+                yield f"data: {json.dumps({'type': 'error', 'data': {'message': 'Event bus not initialized'}, 'timestamp': time.time()})}\n\n"
+                return
 
-            response = await _chat_via_bus(session_id, request.content)
+            queue = await _webui_adapter.submit_streaming(session_id, request.content)
 
-            # Send final response
-            yield f"data: {json.dumps({'type': 'final_response', 'data': {'response': response}, 'timestamp': time.time()})}\n\n"
+            while True:
+                try:
+                    event_type, data = await asyncio.wait_for(queue.get(), timeout=300)
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'error', 'data': {'message': 'Request timed out'}, 'timestamp': time.time()})}\n\n"
+                    break
+
+                if event_type == "done":
+                    break
+
+                yield f"data: {json.dumps({'type': event_type, 'data': data, 'timestamp': time.time()})}\n\n"
+
+                if event_type in ("final_response", "error"):
+                    break
 
         except Exception as e:
             logger.error(f"Error in streaming agent: {e}")
@@ -550,6 +566,240 @@ async def get_goal_suggestion(owner: str = "Sophia"):
     except Exception as e:
         logger.error(f"Error getting goal suggestion: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# ACTIVITY FEED ENDPOINT (Feature 2)
+# ============================================================================
+
+@app.get("/api/activity/feed")
+async def get_activity_feed(limit: int = 50, offset: int = 0, source: str = None):
+    """Get the unified activity feed."""
+    if _event_processor is None:
+        return {"entries": [], "count": 0}
+    entries = _event_processor.get_activity_feed(limit=limit, offset=offset, source_filter=source)
+    return {"entries": entries, "count": len(entries)}
+
+
+# ============================================================================
+# PERSONALITY ENDPOINTS (Feature 5)
+# ============================================================================
+
+class PersonalityRefineRequest(BaseModel):
+    archetype_id: str
+    agent_name: str = "Sophia"
+
+class PersonalitySaveRequest(BaseModel):
+    personality_text: str
+
+@app.get("/api/personality/presets")
+async def get_personality_presets():
+    """Return available personality presets."""
+    from personality_presets import list_presets, PRESETS
+    presets = list_presets()
+    # Include the full snippet for the editor
+    for p in presets:
+        p["system_prompt_snippet"] = PRESETS[p["id"]]["system_prompt_snippet"]
+    return {"presets": presets}
+
+@app.get("/api/personality/current")
+async def get_current_personality():
+    """Return the current personality block from persona_template.txt."""
+    template_path = os.path.join(os.path.dirname(__file__), "persona_template.txt")
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        return {"personality": "", "full_template": ""}
+
+    # Extract the personality section
+    personality = _extract_personality_section(content)
+    return {"personality": personality, "full_template": content}
+
+@app.post("/api/personality/refine")
+async def refine_personality(request: PersonalityRefineRequest):
+    """Use LLM to convert archetype personality into natural traits."""
+    from personality_presets import get_preset
+
+    preset = get_preset(request.archetype_id)
+    snippet = preset.get("system_prompt_snippet", "")
+
+    if not snippet:
+        return {"refined": ""}
+
+    refine_prompt = [
+        {"role": "system", "content": (
+            f"Convert this archetype personality into natural behavioral traits for an AI assistant named {request.agent_name}. "
+            "Do NOT mention the archetype name, Jungian psychology, or any framework terminology. "
+            "Write as direct personality instructions (5-8 bullet points starting with '- '). "
+            "Keep the traits natural and conversational."
+        )},
+        {"role": "user", "content": f"Original personality:\n{snippet}"}
+    ]
+
+    try:
+        loop = asyncio.get_running_loop()
+        refined = await loop.run_in_executor(
+            None,
+            lambda: sophia.llm.chat(refine_prompt, max_tokens=500)
+        )
+        return {"refined": refined.strip()}
+    except Exception as e:
+        logger.error(f"Error refining personality: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/personality/save")
+async def save_personality(request: PersonalitySaveRequest):
+    """Save updated personality into persona_template.txt and reload."""
+    template_path = os.path.join(os.path.dirname(__file__), "persona_template.txt")
+
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="persona_template.txt not found")
+
+    # Replace personality section
+    new_content = _replace_personality_section(content, request.personality_text)
+
+    with open(template_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+    # Reload persona in the agent
+    sophia.reload_persona()
+
+    return {"success": True, "message": "Personality saved and applied"}
+
+
+def _extract_personality_section(template: str) -> str:
+    """Extract 'Your personality:' block from persona template."""
+    lines = template.split("\n")
+    start = None
+    end = None
+
+    for i, line in enumerate(lines):
+        if line.strip().startswith("Your personality:"):
+            start = i
+        elif start is not None and line.strip() and not line.startswith("-") and not line.startswith(" "):
+            # Found start of next section
+            end = i
+            break
+
+    if start is None:
+        return ""
+
+    if end is None:
+        # Find the end by looking for next major section
+        for i in range(start + 1, len(lines)):
+            if lines[i].strip().startswith("Your capabilities:"):
+                end = i
+                break
+
+    if end is None:
+        end = len(lines)
+
+    return "\n".join(lines[start:end]).strip()
+
+
+def _replace_personality_section(template: str, new_personality: str) -> str:
+    """Replace 'Your personality:' block in the template."""
+    lines = template.split("\n")
+    start = None
+    end = None
+
+    for i, line in enumerate(lines):
+        if line.strip().startswith("Your personality:"):
+            start = i
+            continue
+        if start is not None and end is None:
+            # Find end of personality block (next section header)
+            if line.strip().startswith("Your capabilities:"):
+                end = i
+                break
+
+    if start is None:
+        # No personality section found — prepend one
+        return new_personality + "\n\n" + template
+
+    if end is None:
+        end = len(lines)
+
+    # Ensure new_personality starts with "Your personality:" header
+    if not new_personality.strip().startswith("Your personality:"):
+        new_personality = "Your personality:\n" + new_personality
+
+    result_lines = lines[:start] + [new_personality, ""] + lines[end:]
+    return "\n".join(result_lines)
+
+
+# ============================================================================
+# SKILLS CONFIGURATION ENDPOINTS (Feature 4)
+# ============================================================================
+
+class SkillEnvSetRequest(BaseModel):
+    skill_name: str = None
+    var_name: str
+    value: str
+
+@app.get("/api/skills")
+async def list_skills():
+    """List all skills with env var requirements."""
+    from skill_env_config import SkillEnvConfig
+    config = SkillEnvConfig(sophia.skill_loader)
+    skills = config.get_all_skills_info()
+    return {"skills": skills}
+
+@app.get("/api/skills/{name}/scan")
+async def scan_skill(name: str):
+    """Trigger rescan (static + LLM) for a skill."""
+    from skill_env_config import SkillEnvConfig
+    config = SkillEnvConfig(sophia.skill_loader)
+
+    try:
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: config.scan_skill(name, sophia.llm)
+        )
+        return {"success": True, "skill": name, "env_vars": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/skills/{name}/test")
+async def test_skill(name: str):
+    """Run health check on a skill's env vars."""
+    from skill_env_config import SkillEnvConfig
+    config = SkillEnvConfig(sophia.skill_loader)
+
+    try:
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, lambda: config.test_skill(name))
+        return {"success": True, "skill": name, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/skills/env")
+async def get_skill_env():
+    """Get all configured env var values."""
+    from skill_env_config import SkillEnvConfig
+    config = SkillEnvConfig(sophia.skill_loader)
+    return {"env_vars": config.get_all_env_vars()}
+
+@app.post("/api/skills/env")
+async def set_skill_env(request: SkillEnvSetRequest):
+    """Set an env var value."""
+    from skill_env_config import SkillEnvConfig
+    config = SkillEnvConfig(sophia.skill_loader)
+    config.set_env_var(request.var_name, request.value)
+    return {"success": True, "var_name": request.var_name}
+
+@app.delete("/api/skills/env/{var_name}")
+async def delete_skill_env(var_name: str):
+    """Remove an env var."""
+    from skill_env_config import SkillEnvConfig
+    config = SkillEnvConfig(sophia.skill_loader)
+    config.remove_env_var(var_name)
+    return {"success": True, "var_name": var_name}
 
 
 # ============================================================================

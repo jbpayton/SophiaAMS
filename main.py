@@ -104,6 +104,13 @@ async def build_and_run() -> None:
     )
 
     # ------------------------------------------------------------------
+    # 2b. Load skill env vars from config
+    # ------------------------------------------------------------------
+    from skill_env_config import SkillEnvConfig
+    skill_env = SkillEnvConfig(sophia.skill_loader)
+    skill_env.apply_env_vars()
+
+    # ------------------------------------------------------------------
     # 3. EventBus + EventProcessor
     # ------------------------------------------------------------------
     from event_bus import EventBus
@@ -115,6 +122,8 @@ async def build_and_run() -> None:
     processor = EventProcessor(
         bus=bus,
         sophia_chat=sophia.chat,
+        sophia_chat_streaming=sophia.chat_streaming,
+        sophia_cancel_session=sophia.cancel_session,
         memory_system=memory_system,
         rate_limit_per_hour=agent_cfg.get("rate_limit_per_hour", 120),
     )
@@ -185,6 +194,7 @@ async def build_and_run() -> None:
         memory_explorer_ref=memory_explorer,
         kgraph_ref=kgraph,
         webui_adapter_ref=webui_adapter,
+        event_processor_ref=processor,
     )
 
     # ------------------------------------------------------------------

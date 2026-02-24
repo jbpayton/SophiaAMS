@@ -1,0 +1,33 @@
+{
+  "env_vars": {
+    "SEARXNG_URL": "http://192.168.2.94:8088/"
+  },
+  "skill_analysis": {
+    "episodic-recall": [],
+    "goal-management": [],
+    "knowledge-overview": [],
+    "memory-browser": [],
+    "memory-query": [],
+    "memory-stats": [],
+    "memory-store": [],
+    "skill-creator": [],
+    "web-learn": [],
+    "web-read": [],
+    "web-search": [
+      "SEARXNG_URL"
+    ]
+  },
+  "skill_status": {
+    "web-search": {
+      "status": "verified",
+      "message": null,
+      "timestamp": 1771900726.8058815,
+      "var_results": {
+        "SEARXNG_URL": {
+          "ok": true,
+          "error": null
+        }
+      }
+    }
+  }
+}

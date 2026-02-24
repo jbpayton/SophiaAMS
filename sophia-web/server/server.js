@@ -247,6 +247,108 @@ app.post('/api/chat/:sessionId/stream', async (req, res) => {
   }
 });
 
+// Activity feed endpoint (Feature 2)
+app.get('/api/activity/feed', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/activity/feed`, { params: req.query });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Personality endpoints (Feature 5)
+app.get('/api/personality/presets', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/personality/presets`);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/personality/current', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/personality/current`);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/personality/refine', async (req, res) => {
+  try {
+    const response = await axios.post(`${AGENT_API}/api/personality/refine`, req.body, { timeout: 60000 });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/personality/save', async (req, res) => {
+  try {
+    const response = await axios.post(`${AGENT_API}/api/personality/save`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Skills configuration endpoints (Feature 4)
+app.get('/api/skills', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/skills`);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/skills/:name/scan', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/skills/${req.params.name}/scan`, { timeout: 60000 });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/skills/:name/test', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/skills/${req.params.name}/test`, { timeout: 15000 });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/skills/env', async (req, res) => {
+  try {
+    const response = await axios.get(`${AGENT_API}/api/skills/env`);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/skills/env', async (req, res) => {
+  try {
+    const response = await axios.post(`${AGENT_API}/api/skills/env`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/skills/env/:varName', async (req, res) => {
+  try {
+    const response = await axios.delete(`${AGENT_API}/api/skills/env/${req.params.varName}`);
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/query/procedure', async (req, res) => {
   try {
     console.log('🔍 Procedure lookup request:', { goal: req.body.goal });

@@ -60,3 +60,19 @@ class EventBus:
     def qsize(self) -> int:
         """Return the approximate number of pending events."""
         return self._queue.qsize()
+
+    def peek(self) -> Optional[Event]:
+        """Peek at the highest-priority event without removing it.
+
+        Returns None if the queue is empty. Not thread-safe for the
+        actual item (it may be consumed before you act on it), but
+        sufficient for preemption heuristics.
+        """
+        # Access the internal heap of the PriorityQueue
+        try:
+            internal = self._queue._queue
+            if internal:
+                return internal[0]
+        except (AttributeError, IndexError):
+            pass
+        return None
