@@ -175,6 +175,9 @@ skill_env_config.json
 # Setup wizard sentinel
 .setup_complete
 
+# Logs directory (sophia.log covered by *.log, but activity.jsonl needs this)
+logs/
+
 # Workspace runtime data (agent-generated)
 workspace/
 reports/

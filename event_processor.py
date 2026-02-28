@@ -13,7 +13,9 @@ flows through the same pipeline regardless of origin.
 
 import asyncio
 import collections
+import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -49,6 +51,7 @@ class EventProcessor:
         sophia_cancel_session: Callable = None,
         memory_system=None,
         rate_limit_per_hour: int = 120,
+        skill_env_config=None,
     ):
         self.bus = bus
         self.sophia_chat = sophia_chat
@@ -56,6 +59,7 @@ class EventProcessor:
         self.sophia_cancel_session = sophia_cancel_session
         self.memory_system = memory_system
         self.rate_limit_per_hour = rate_limit_per_hour
+        self.skill_env_config = skill_env_config
 
         # Response handlers keyed by source_channel
         self._response_handlers: Dict[
@@ -72,8 +76,12 @@ class EventProcessor:
         # Running flag
         self._running = False
 
-        # Activity log (Feature 2)
+        # Activity log (Feature 2) — persisted to JSONL
+        self._activity_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "logs", "activity.jsonl"
+        )
         self._activity_log: collections.deque = collections.deque(maxlen=500)
+        self._load_activity_log()
 
         # Currently processing event tracking (for preemption)
         self._current_event: Optional[Event] = None
@@ -279,6 +287,10 @@ class EventProcessor:
         if is_from_bus:
             self.bus.task_done()
 
+        # Scrub any secret values from the response (defense in depth)
+        if self.skill_env_config:
+            response = self.skill_env_config.scrub_secrets(response)
+
         # Log activity (Feature 2)
         self._log_activity(event, content, response, thoughts_data)
 
@@ -299,7 +311,7 @@ class EventProcessor:
 
         # Journal goal progress after goal events
         if event.event_type == EventType.GOAL_PURSUIT:
-            await self._journal_goal_progress(event, response)
+            await self._journal_goal_progress(event, response, thoughts_data)
 
     # ------------------------------------------------------------------
     # Preemption monitor (Feature 3)
@@ -329,6 +341,43 @@ class EventProcessor:
     # Activity log (Feature 2)
     # ------------------------------------------------------------------
 
+    def _load_activity_log(self) -> None:
+        """Load persisted activity entries from JSONL on startup."""
+        if not os.path.isfile(self._activity_file):
+            return
+        try:
+            with open(self._activity_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            self._activity_log.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+            logger.info(
+                f"[EventProcessor] Loaded {len(self._activity_log)} activity entries from disk"
+            )
+        except Exception as e:
+            logger.error(f"[EventProcessor] Failed to load activity log: {e}")
+
+    def _persist_activity(self, entry: dict) -> None:
+        """Append a single activity entry to the JSONL file."""
+        try:
+            os.makedirs(os.path.dirname(self._activity_file), exist_ok=True)
+            with open(self._activity_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, default=str) + "\n")
+            # Trim file if it exceeds 5 MB — rewrite with current deque contents
+            try:
+                if os.path.getsize(self._activity_file) > 5 * 1024 * 1024:
+                    with open(self._activity_file, "w", encoding="utf-8") as f:
+                        for e in self._activity_log:
+                            f.write(json.dumps(e, default=str) + "\n")
+                    logger.info("[EventProcessor] Trimmed activity log file")
+            except OSError:
+                pass
+        except Exception as e:
+            logger.error(f"[EventProcessor] Failed to persist activity: {e}")
+
     def _log_activity(self, event: Event, content: str, response: str, thoughts: list) -> None:
         """Append a processed event to the activity log."""
         entry = {
@@ -346,6 +395,7 @@ class EventProcessor:
             "status": "completed",
         }
         self._activity_log.append(entry)
+        self._persist_activity(entry)
 
     def get_activity_feed(self, limit: int = 50, offset: int = 0, source_filter: str = None) -> List[dict]:
         """Return recent activity entries, newest first."""
@@ -361,7 +411,9 @@ class EventProcessor:
     # Goal journaling
     # ------------------------------------------------------------------
 
-    async def _journal_goal_progress(self, event: Event, response: str) -> None:
+    async def _journal_goal_progress(
+        self, event: Event, response: str, thoughts_data: list = None
+    ) -> None:
         """
         After a goal event is processed, extract a brief progress note
         and store it on the goal in the knowledge graph.
@@ -377,7 +429,7 @@ class EventProcessor:
             return
 
         # Extract a concise progress note from the response
-        note = self._extract_progress_note(response)
+        note = self._extract_progress_note(response, thoughts_data)
 
         try:
             loop = asyncio.get_running_loop()
@@ -421,16 +473,22 @@ class EventProcessor:
             goal_desc, {"journal_entries": journal}
         )
 
-    def _extract_progress_note(self, response: str, max_len: int = 200) -> str:
+    def _extract_progress_note(
+        self, response: str, thoughts_data: list = None, max_len: int = 200
+    ) -> str:
         """
         Extract a concise progress note from an agent response.
         Takes the first meaningful paragraph or sentence.
+        Falls back to thoughts_data (tool calls, reasoning) when response is code-only.
         """
         # Strip code blocks — they're not useful as journal notes
         cleaned = re.sub(r"```.*?```", "", response, flags=re.DOTALL)
         cleaned = cleaned.strip()
 
         if not cleaned:
+            # Try to build a note from thoughts_data
+            if thoughts_data:
+                return self._note_from_thoughts(thoughts_data, max_len)
             return "(agent produced code output only)"
 
         # Take the first paragraph
@@ -445,6 +503,38 @@ class EventProcessor:
             note = note[:max_len].rsplit(" ", 1)[0] + "..."
 
         return note
+
+    def _note_from_thoughts(self, thoughts_data: list, max_len: int = 200) -> str:
+        """Build a journal note from thoughts_data when the response text is empty."""
+        tool_names = []
+        first_reasoning = None
+
+        for item in thoughts_data:
+            etype = item.get("type", "")
+            data = item.get("data", "")
+
+            if etype == "tool_start":
+                # data is typically the tool name or "tool_name: args"
+                name = str(data).split(":")[0].split("(")[0].strip()
+                if name and name not in tool_names:
+                    tool_names.append(name)
+            elif etype == "reasoning" and not first_reasoning and data:
+                first_reasoning = str(data).strip().split("\n")[0]
+
+        parts = []
+        if tool_names:
+            names_str = ", ".join(tool_names[:4])
+            parts.append(f"Used {len(tool_names)} tool{'s' if len(tool_names) != 1 else ''} ({names_str})")
+        if first_reasoning:
+            parts.append(f"Reasoning: {first_reasoning}")
+
+        if parts:
+            note = ". ".join(parts)
+            if len(note) > max_len:
+                note = note[:max_len].rsplit(" ", 1)[0] + "..."
+            return note
+
+        return "(agent produced code output only)"
 
     # ------------------------------------------------------------------
     # Rate limiting

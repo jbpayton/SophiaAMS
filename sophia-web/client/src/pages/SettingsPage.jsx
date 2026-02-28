@@ -185,6 +185,8 @@ function SkillsConfig() {
   const [loading, setLoading] = useState(true)
   const [expandedSkills, setExpandedSkills] = useState(new Set())
   const [envValues, setEnvValues] = useState({})
+  const [hasValue, setHasValue] = useState({})
+  const [dirtyFields, setDirtyFields] = useState(new Set())
   const [scanning, setScanning] = useState(null)
   const [testing, setTesting] = useState(null)
   const [testResults, setTestResults] = useState({})
@@ -201,14 +203,18 @@ function SkillsConfig() {
       const data = await res.json()
       setSkills(data.skills || [])
 
-      // Build initial env values map
+      // Build initial env values map (values are masked from the server)
       const values = {}
+      const hv = {}
       for (const skill of (data.skills || [])) {
-        for (const [varName, value] of Object.entries(skill.configured_values || {})) {
-          values[varName] = value
+        for (const varName of (skill.env_vars || [])) {
+          values[varName] = ''
+          hv[varName] = skill.has_value?.[varName] || false
         }
       }
       setEnvValues(values)
+      setHasValue(hv)
+      setDirtyFields(new Set())
     } catch (err) {
       console.error('Failed to fetch skills:', err)
     } finally {
@@ -239,6 +245,10 @@ function SkillsConfig() {
   }
 
   const handleSaveEnvVar = async (varName) => {
+    if (!dirtyFields.has(varName)) {
+      setMessage({ type: 'info', text: `${varName} unchanged — click to edit first` })
+      return
+    }
     try {
       await fetch('/api/skills/env', {
         method: 'POST',
@@ -251,6 +261,13 @@ function SkillsConfig() {
       await fetchSkills()
     } catch (err) {
       setMessage({ type: 'error', text: `Failed to save: ${err.message}` })
+    }
+  }
+
+  const handleFieldFocus = (varName) => {
+    if (!dirtyFields.has(varName)) {
+      setDirtyFields(prev => new Set(prev).add(varName))
+      setEnvValues(prev => ({ ...prev, [varName]: '' }))
     }
   }
 
@@ -369,16 +386,33 @@ function SkillsConfig() {
                           <div className="env-var-input">
                             <input
                               type={varName.toLowerCase().includes('key') || varName.toLowerCase().includes('secret') || varName.toLowerCase().includes('token') ? 'password' : 'text'}
-                              value={envValues[varName] || ''}
-                              onChange={(e) => setEnvValues(prev => ({ ...prev, [varName]: e.target.value }))}
-                              placeholder="Not set"
+                              value={dirtyFields.has(varName) ? (envValues[varName] || '') : ''}
+                              onChange={(e) => {
+                                if (!dirtyFields.has(varName)) {
+                                  setDirtyFields(prev => new Set(prev).add(varName))
+                                }
+                                setEnvValues(prev => ({ ...prev, [varName]: e.target.value }))
+                              }}
+                              onFocus={() => handleFieldFocus(varName)}
+                              placeholder={hasValue[varName] && !dirtyFields.has(varName) ? 'Configured (hidden)' : 'Not set'}
+                              disabled={hasValue[varName] && !dirtyFields.has(varName)}
                             />
-                            <button
-                              className="save-var-btn"
-                              onClick={() => handleSaveEnvVar(varName)}
-                            >
-                              <Save size={14} />
-                            </button>
+                            {hasValue[varName] && !dirtyFields.has(varName) ? (
+                              <button
+                                className="save-var-btn"
+                                onClick={() => handleFieldFocus(varName)}
+                                title="Edit value"
+                              >
+                                <Key size={14} />
+                              </button>
+                            ) : (
+                              <button
+                                className="save-var-btn"
+                                onClick={() => handleSaveEnvVar(varName)}
+                              >
+                                <Save size={14} />
+                              </button>
+                            )}
                           </div>
                           {varResult && !varResult.ok && varResult.error && (
                             <div className="var-error-msg">

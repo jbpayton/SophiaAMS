@@ -11,6 +11,7 @@ import os
 import re
 import time
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,40 @@ _ENV_PATTERNS = [
 
 # Internal vars managed by the system, not user-configurable
 _INTERNAL_ENV_VARS = {"SOPHIA_SERVER_URL", "AGENT_PORT", "WORKSPACE_PATH", "SKILLS_PATH"}
+
+
+def _is_sensitive_var(var_name: str) -> bool:
+    """Determine if a variable name likely holds a secret vs a service endpoint."""
+    # Service endpoint URLs and paths are not secrets
+    non_sensitive_suffixes = ("_URL", "_BASE", "_HOST", "_PORT", "_PATH", "_DIR")
+    return not var_name.upper().endswith(non_sensitive_suffixes)
+
+
+def _mask_value(value: str, var_name: str = "") -> str:
+    """Mask a secret value for safe display in API responses.
+
+    Non-sensitive vars (URLs, hosts, paths) are shown in full.
+    """
+    if not value:
+        return ""
+
+    # Don't mask non-sensitive vars (service endpoints, paths, etc.)
+    if var_name and not _is_sensitive_var(var_name):
+        return value
+
+    # URLs: show scheme + masked host
+    if value.startswith("http://") or value.startswith("https://"):
+        parsed = urlparse(value)
+        host = parsed.hostname or ""
+        masked_host = host[:3] + "\u2022\u2022\u2022" if len(host) > 3 else "\u2022\u2022\u2022"
+        return f"{parsed.scheme}://{masked_host}"
+
+    # Short values: fully mask
+    if len(value) <= 8:
+        return "\u2022" * 6
+
+    # Longer values: first 3 + ••• + last 2
+    return value[:3] + "\u2022\u2022\u2022" + value[-2:]
 
 
 class SkillEnvConfig:
@@ -226,14 +261,20 @@ class SkillEnvConfig:
 
             skill_status = self.get_skill_status(skill.name)
 
+            raw_values = {
+                var: self._config.get("env_vars", {}).get(var, "")
+                for var in cached
+            }
             skills.append({
                 "name": skill.name,
                 "description": skill.description,
                 "path": skill.path,
                 "env_vars": cached,
                 "configured_values": {
-                    var: self._config.get("env_vars", {}).get(var, "")
-                    for var in cached
+                    var: _mask_value(val, var) for var, val in raw_values.items()
+                },
+                "has_value": {
+                    var: bool(val.strip()) for var, val in raw_values.items()
                 },
                 "status": skill_status["status"],
                 "status_message": skill_status["message"],
@@ -242,8 +283,11 @@ class SkillEnvConfig:
         return skills
 
     def get_all_env_vars(self) -> dict:
-        """Get all configured env var values."""
-        return dict(self._config.get("env_vars", {}))
+        """Get all configured env var values (masked for safe display)."""
+        return {
+            var: _mask_value(val, var)
+            for var, val in self._config.get("env_vars", {}).items()
+        }
 
     def set_env_var(self, var_name: str, value: str) -> None:
         """Set an env var value (persisted + applied immediately)."""
@@ -273,3 +317,13 @@ class SkillEnvConfig:
                 os.environ[var] = value
         if env_vars:
             logger.info(f"Applied {len(env_vars)} skill env vars")
+
+    def scrub_secrets(self, text: str) -> str:
+        """Replace any env var secret values found in text with [REDACTED]."""
+        if not text:
+            return text
+        result = text
+        for value in self._config.get("env_vars", {}).values():
+            if value and len(value) > 3:
+                result = result.replace(value, "[REDACTED]")
+        return result

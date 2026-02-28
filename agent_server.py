@@ -568,6 +568,26 @@ async def get_goal_suggestion(owner: str = "Sophia"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/goals/subgoals")
+async def get_subgoals(parent: str, owner: str = "Sophia"):
+    """Get sub-goals for a parent goal."""
+    try:
+        subgoals = memory_system.get_subgoals(parent, owner=owner)
+        formatted = []
+        for triple, metadata in subgoals:
+            formatted.append({
+                "description": triple[2],
+                "status": metadata.get('goal_status', 'pending'),
+                "priority": metadata.get('priority', 3),
+                "parent_goal": metadata.get('parent_goal_id'),
+            })
+        return {"subgoals": formatted, "count": len(formatted), "parent": parent}
+
+    except Exception as e:
+        logger.error(f"Error getting subgoals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # ACTIVITY FEED ENDPOINT (Feature 2)
 # ============================================================================

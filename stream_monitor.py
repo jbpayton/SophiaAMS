@@ -28,6 +28,7 @@ class StreamMonitor:
         idle_seconds: float = 30.0,
         episode_rotate_threshold: int = 50,
         agent_name: str = None,
+        user_name: str = None,
     ):
         self.semantic_memory = semantic_memory
         self.episodic_memory = episodic_memory
@@ -35,6 +36,7 @@ class StreamMonitor:
         self.idle_seconds = idle_seconds
         self.episode_rotate_threshold = episode_rotate_threshold
         self.agent_name = agent_name or "Sophia"
+        self.user_name = user_name or "User"
 
         # Goal adapter reference — set by main.py for workspace awareness
         self._goal_adapter = None
@@ -128,18 +130,17 @@ class StreamMonitor:
         try:
             # Ensure episode exists
             if session["episode_id"] is None:
-                episode = self.episodic_memory.start_episode(session_id=session_id)
-                session["episode_id"] = episode.episode_id
+                session["episode_id"] = self.episodic_memory.create_episode(session_id=session_id)
 
             # Save messages to episode
-            self.episodic_memory.add_message(
+            self.episodic_memory.add_message_to_episode(
                 episode_id=session["episode_id"],
-                role="user",
+                speaker="user",
                 content=user_input,
             )
-            self.episodic_memory.add_message(
+            self.episodic_memory.add_message_to_episode(
                 episode_id=session["episode_id"],
-                role="assistant",
+                speaker="assistant",
                 content=assistant_output,
             )
 
@@ -204,7 +205,7 @@ class StreamMonitor:
 
         for user_input, assistant_output in queue:
             try:
-                text = f"User: {user_input}\nAssistant: {assistant_output}"
+                text = f"SPEAKER:{self.user_name}|{user_input}\nSPEAKER:{self.agent_name}|{assistant_output}"
                 self.semantic_memory.ingest_text(
                     text=text,
                     source=f"conversation:{session_id}",

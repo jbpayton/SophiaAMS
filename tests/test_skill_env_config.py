@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from urllib.error import HTTPError, URLError
 
-from skill_env_config import SkillEnvConfig, CONFIG_FILE
+from skill_env_config import SkillEnvConfig, CONFIG_FILE, _mask_value
 from skill_loader import SkillLoader
 
 
@@ -436,6 +436,189 @@ class TestGetAllSkillsInfo(SkillEnvConfigTestBase):
         ns = next(s for s in skills if s["name"] == "new-skill")
         self.assertIn("NEW_VAR", ns["env_vars"])
         self.assertEqual(ns["status"], "unconfigured")
+
+
+# ============================================================================
+# _mask_value()
+# ============================================================================
+
+class TestMaskValue(unittest.TestCase):
+
+    def test_empty_returns_empty(self):
+        self.assertEqual(_mask_value(""), "")
+
+    def test_http_url_masked(self):
+        result = _mask_value("http://192.168.2.94:1234")
+        self.assertTrue(result.startswith("http://"))
+        self.assertIn("\u2022\u2022\u2022", result)
+        self.assertNotIn("168", result)
+
+    def test_https_url_masked(self):
+        result = _mask_value("https://api.example.com/v1")
+        self.assertTrue(result.startswith("https://"))
+        self.assertIn("\u2022\u2022\u2022", result)
+        self.assertNotIn("example", result)
+
+    def test_short_value_fully_masked(self):
+        result = _mask_value("abc123")
+        self.assertEqual(result, "\u2022" * 6)
+
+    def test_exactly_8_chars_fully_masked(self):
+        result = _mask_value("12345678")
+        self.assertEqual(result, "\u2022" * 6)
+
+    def test_long_value_shows_prefix_suffix(self):
+        result = _mask_value("sk-abc123secretkey")
+        self.assertTrue(result.startswith("sk-"))
+        self.assertTrue(result.endswith("ey"))
+        self.assertIn("\u2022\u2022\u2022", result)
+        self.assertNotIn("secret", result)
+
+    def test_9_char_value_shows_prefix_suffix(self):
+        result = _mask_value("123456789")
+        self.assertEqual(result, "123\u2022\u2022\u202289")
+
+
+# ============================================================================
+# scrub_secrets()
+# ============================================================================
+
+class TestScrubSecrets(SkillEnvConfigTestBase):
+
+    def test_scrubs_secret_from_text(self):
+        self._create_skill("s")
+        self._make_config(env_vars={"API_KEY": "my-super-secret-key-12345"})
+        _, config = self._make_loader_and_config()
+
+        text = "The response was from my-super-secret-key-12345 endpoint"
+        result = config.scrub_secrets(text)
+        self.assertIn("[REDACTED]", result)
+        self.assertNotIn("my-super-secret-key-12345", result)
+
+    def test_skips_short_values(self):
+        self._create_skill("s")
+        self._make_config(env_vars={"FLAG": "yes"})
+        _, config = self._make_loader_and_config()
+
+        text = "The answer is yes or no"
+        result = config.scrub_secrets(text)
+        self.assertNotIn("[REDACTED]", result)
+        self.assertEqual(result, text)
+
+    def test_skips_empty_values(self):
+        self._create_skill("s")
+        self._make_config(env_vars={"EMPTY": ""})
+        _, config = self._make_loader_and_config()
+
+        text = "Nothing to scrub here"
+        result = config.scrub_secrets(text)
+        self.assertEqual(result, text)
+
+    def test_scrubs_multiple_secrets(self):
+        self._create_skill("s")
+        self._make_config(env_vars={
+            "KEY1": "secret-alpha-123",
+            "KEY2": "secret-beta-456",
+        })
+        _, config = self._make_loader_and_config()
+
+        text = "Found secret-alpha-123 and secret-beta-456 in output"
+        result = config.scrub_secrets(text)
+        self.assertEqual(result.count("[REDACTED]"), 2)
+        self.assertNotIn("secret-alpha", result)
+        self.assertNotIn("secret-beta", result)
+
+    def test_returns_none_text_unchanged(self):
+        self._create_skill("s")
+        self._make_config(env_vars={"KEY": "secret"})
+        _, config = self._make_loader_and_config()
+
+        self.assertEqual(config.scrub_secrets(""), "")
+
+    def test_url_value_scrubbed(self):
+        self._create_skill("s")
+        self._make_config(env_vars={"SVC_URL": "http://192.168.2.94:1234"})
+        _, config = self._make_loader_and_config()
+
+        text = "Connecting to http://192.168.2.94:1234/api/chat"
+        result = config.scrub_secrets(text)
+        self.assertIn("[REDACTED]", result)
+        self.assertNotIn("192.168.2.94", result)
+
+
+# ============================================================================
+# get_all_skills_info() — masked values and has_value
+# ============================================================================
+
+class TestGetAllSkillsInfoMasked(SkillEnvConfigTestBase):
+
+    def test_url_vars_shown_in_full(self):
+        """URL endpoint vars (like SEARXNG_URL) are not masked — they're not secrets."""
+        self._create_skill("web-search", env_vars=["SEARXNG_URL"])
+        self._make_config(
+            skill_analysis={"web-search": ["SEARXNG_URL"]},
+            env_vars={"SEARXNG_URL": "http://192.168.2.94:8088"},
+        )
+        _, config = self._make_loader_and_config()
+
+        skills = config.get_all_skills_info()
+        ws = next(s for s in skills if s["name"] == "web-search")
+        self.assertEqual(ws["configured_values"]["SEARXNG_URL"], "http://192.168.2.94:8088")
+
+    def test_secret_vars_are_masked(self):
+        """Vars that look like secrets (API keys, tokens) are masked."""
+        self._create_skill("web-search", env_vars=["API_KEY"])
+        self._make_config(
+            skill_analysis={"web-search": ["API_KEY"]},
+            env_vars={"API_KEY": "sk-secret-key-12345"},
+        )
+        _, config = self._make_loader_and_config()
+
+        skills = config.get_all_skills_info()
+        ws = next(s for s in skills if s["name"] == "web-search")
+        self.assertNotIn("secret", ws["configured_values"]["API_KEY"])
+        self.assertIn("\u2022\u2022\u2022", ws["configured_values"]["API_KEY"])
+
+    def test_has_value_true_when_set(self):
+        self._create_skill("web-search", env_vars=["SEARXNG_URL"])
+        self._make_config(
+            skill_analysis={"web-search": ["SEARXNG_URL"]},
+            env_vars={"SEARXNG_URL": "http://localhost:8088"},
+        )
+        _, config = self._make_loader_and_config()
+
+        skills = config.get_all_skills_info()
+        ws = next(s for s in skills if s["name"] == "web-search")
+        self.assertTrue(ws["has_value"]["SEARXNG_URL"])
+
+    def test_has_value_false_when_empty(self):
+        self._create_skill("web-search", env_vars=["SEARXNG_URL"])
+        self._make_config(
+            skill_analysis={"web-search": ["SEARXNG_URL"]},
+            env_vars={"SEARXNG_URL": ""},
+        )
+        _, config = self._make_loader_and_config()
+
+        skills = config.get_all_skills_info()
+        ws = next(s for s in skills if s["name"] == "web-search")
+        self.assertFalse(ws["has_value"]["SEARXNG_URL"])
+
+
+# ============================================================================
+# get_all_env_vars() — returns masked
+# ============================================================================
+
+class TestGetAllEnvVarsMasked(SkillEnvConfigTestBase):
+
+    def test_returns_masked_values(self):
+        self._create_skill("s")
+        self._make_config(env_vars={"MY_SECRET": "super-secret-api-key-xyz"})
+        _, config = self._make_loader_and_config()
+
+        result = config.get_all_env_vars()
+        self.assertIn("MY_SECRET", result)
+        self.assertNotEqual(result["MY_SECRET"], "super-secret-api-key-xyz")
+        self.assertIn("\u2022\u2022\u2022", result["MY_SECRET"])
 
 
 if __name__ == "__main__":

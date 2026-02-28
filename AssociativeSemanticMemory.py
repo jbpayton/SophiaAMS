@@ -757,6 +757,15 @@ If one fact clearly and directly answers the input text, **include that fact ver
                         updates['goal_status'] = "blocked"
                         updates['blocker_reason'] = f"Blocked by pending dependencies: {', '.join(unmet_deps)}"
                     else:
+                        # Check for incomplete sub-goals
+                        subgoals = self.get_subgoals(goal_description)
+                        incomplete = [t[2] for t, m in subgoals
+                                      if m.get('goal_status', 'pending') not in ('completed', 'cancelled')]
+                        if incomplete:
+                            logging.warning(f"[GOAL] Cannot complete goal -{len(incomplete)} incomplete sub-goals")
+                            updates['goal_status'] = "blocked"
+                            updates['blocker_reason'] = f"Has {len(incomplete)} incomplete sub-goal(s): {', '.join(incomplete[:3])}"
+                    if updates.get('goal_status') != 'blocked':
                         updates['goal_status'] = status
                         updates['completion_timestamp'] = current_time
                 else:
@@ -765,6 +774,11 @@ If one fact clearly and directly answers the input text, **include that fact ver
                         updates['completion_timestamp'] = current_time
 
             updates['status_updated_timestamp'] = current_time
+            # When resetting to pending, clear stale progress data
+            if updates.get('goal_status') == 'pending':
+                updates['journal_entries'] = []
+                updates['completion_notes'] = None
+                updates['completion_timestamp'] = None
             logging.info(f"[GOAL] Setting status to: {updates.get('goal_status', status)}")
 
         if priority is not None:
@@ -874,6 +888,21 @@ If one fact clearly and directly answers the input text, **include that fact ver
         logging.info(f"[GOAL] Found {len(results)} matching goals")
         return results
 
+    def get_subgoals(self, parent_description: str, owner: str = None) -> List[Tuple]:
+        """
+        Get all sub-goals of a given parent goal.
+
+        Args:
+            parent_description: Description of the parent goal
+            owner: Optional owner filter
+
+        Returns:
+            List of (triple, metadata) tuples for sub-goals
+        """
+        all_goals = self.query_goals(owner=owner, limit=100)
+        return [(t, m) for t, m in all_goals
+                if m.get("parent_goal_id") == parent_description]
+
     def get_goal_progress(self, owner: Optional[str] = None) -> Dict[str, Any]:
         """
         Get statistics on goal completion and progress.
@@ -952,17 +981,22 @@ If one fact clearly and directly answers the input text, **include that fact ver
         """
         logging.info(f"[GOAL] Suggesting next goal for {owner}")
 
-        # Get all pending goals
+        # Get in_progress goals first — these should be continued before starting new ones
+        in_progress_goals = self.query_goals(owner=owner, status="in_progress", limit=100)
+        # Then get pending goals
         pending_goals = self.query_goals(owner=owner, status="pending", limit=100)
 
-        if not pending_goals:
-            logging.info("[GOAL] No pending goals found")
+        # Combine: in_progress first, then pending
+        all_actionable = in_progress_goals + pending_goals
+
+        if not all_actionable:
+            logging.info("[GOAL] No pending or in-progress goals found")
             return None
 
         # Score each goal based on priority, dependencies, and type
         scored_goals = []
 
-        for triple, metadata in pending_goals:
+        for triple, metadata in all_actionable:
             goal_desc = triple[2]
             priority = metadata.get('priority', 3)
             target_date = metadata.get('target_date')
@@ -978,6 +1012,10 @@ If one fact clearly and directly answers the input text, **include that fact ver
             # Base score is priority
             score = priority * 10
 
+            # Boost in-progress goals — continue what you've started
+            if metadata.get('goal_status') == 'in_progress':
+                score += 30
+
             # Boost derived goals (from instrumental parents)
             if goal_type == "derived":
                 score += 20
@@ -990,6 +1028,25 @@ If one fact clearly and directly answers the input text, **include that fact ver
                     score += 15
                 elif days_until < 30:  # Less than a month away
                     score += 5
+
+            # Penalize parent goals that have active sub-goals
+            subgoals = self.get_subgoals(goal_desc, owner=owner)
+            active_subgoals = [s for s in subgoals
+                               if s[1].get('goal_status', 'pending') not in ('completed', 'cancelled')]
+            if active_subgoals:
+                score -= 50
+                logging.debug(f"[GOAL] Penalizing parent '{goal_desc}' (-50, has {len(active_subgoals)} active sub-goals)")
+
+            # Boost sub-goals of high-priority parents
+            parent_id = metadata.get('parent_goal_id')
+            if parent_id:
+                parent_result = self.kgraph.query_goal_by_description(parent_id, return_metadata=True)
+                if parent_result:
+                    _, parent_meta = parent_result
+                    parent_priority = parent_meta.get('priority', 3)
+                    if parent_priority >= 4:
+                        score += 15
+                        logging.debug(f"[GOAL] Boosting sub-goal '{goal_desc}' (+15, parent priority {parent_priority})")
 
             scored_goals.append({
                 "goal": goal_desc,

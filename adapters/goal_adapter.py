@@ -104,8 +104,10 @@ class GoalAdapter(EventSourceAdapter):
             self._consecutive_count = 0
             await asyncio.sleep(self.rest_seconds)
 
-        # Get the suggested goal from memory
-        suggestion = self._get_suggestion()
+        # Get the suggested goal from memory (run in executor to avoid
+        # blocking the async event loop during embedding/ChromaDB calls)
+        loop = asyncio.get_running_loop()
+        suggestion = await loop.run_in_executor(None, self._get_suggestion)
         if not suggestion:
             return None
 
@@ -180,12 +182,27 @@ class GoalAdapter(EventSourceAdapter):
             logger.error(f"[GoalAdapter] Error building workspace summary: {e}")
             return ""
 
+    def _get_subgoals(self, goal_desc: str) -> List[Dict]:
+        """Get sub-goals for a given parent goal with their status."""
+        try:
+            subgoals = self.memory.get_subgoals(goal_desc, owner=self.agent_name)
+            return [
+                {
+                    "description": t[2],
+                    "status": m.get("goal_status", "pending"),
+                }
+                for t, m in subgoals
+            ]
+        except Exception as e:
+            logger.error(f"[GoalAdapter] Error getting sub-goals: {e}")
+            return []
+
     def _generate_goal_prompt(
         self, goal_desc: str, goal_metadata: Dict, suggestion: Dict
     ) -> str:
         """
         Build a prompt for a specific goal, including journal entries
-        from previous work sessions.
+        from previous work sessions and sub-goal status.
         """
         # Get all active goals for context
         try:
@@ -206,6 +223,17 @@ class GoalAdapter(EventSourceAdapter):
 
         reasoning = suggestion.get("reasoning", "")
 
+        # Get sub-goal status
+        subgoals = self._get_subgoals(goal_desc)
+        subgoal_text = ""
+        if subgoals:
+            sg_lines = []
+            for sg in subgoals:
+                sg_lines.append(f"- [{sg['status']}] {sg['description']}")
+            subgoal_text = "\nSUB-GOALS:\n" + "\n".join(sg_lines)
+
+        has_subgoals = len(subgoals) > 0
+
         prompt = f"""AUTONOMOUS MODE — Working on a specific goal.
 
 TARGET GOAL: {goal_desc}
@@ -213,11 +241,21 @@ TARGET GOAL: {goal_desc}
 
 {"YOUR PREVIOUS PROGRESS ON THIS GOAL:" if journal_text else ""}
 {journal_text}
+{subgoal_text}
 
 ALL ACTIVE GOALS:
 {all_goals if all_goals else "(No goals set yet)"}
 
-Take concrete action on the target goal. Use skills, run code, search the web.
-When done with a step, summarize what you accomplished and what's next."""
+INSTRUCTIONS:
+1. If this goal is broad (e.g., "Learn about X", "Research Y") and has NO sub-goals yet:
+   - Decompose it into 3-5 specific sub-goals using set_goal(desc, parent_goal="{goal_desc}")
+   - Mark THIS goal as in_progress, then STOP — next round will assign sub-goals.
+2. If this goal already has sub-goals, do NOT work on it directly — the system will assign sub-goals.
+3. If this goal is specific enough to act on directly:
+   - Take ONE concrete step using ```run blocks
+   - You MUST use web-search or web-read skills to gather REAL information
+   - Use web-learn to permanently store important knowledge
+4. Only call mark_completed() when you have ACTUALLY done substantial work this session.
+5. After each step, summarize what you learned and what's next."""
 
         return prompt

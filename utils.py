@@ -1,5 +1,6 @@
 import io
 import logging
+import logging.handlers
 import os
 import sys
 from typing import Optional
@@ -31,8 +32,11 @@ def setup_logging(debug_mode: bool = False, log_file: Optional[str] = None):
         log_dir = os.path.dirname(log_file)
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
-            
-        file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file, mode='a', encoding='utf-8',
+            maxBytes=10 * 1024 * 1024, backupCount=5,
+        )
         file_handler.setFormatter(formatter)
         file_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)
         root_logger.addHandler(file_handler)
@@ -60,4 +64,7 @@ def setup_logging(debug_mode: bool = False, log_file: Optional[str] = None):
     for handler in root_logger.handlers:
         handler.flush()
         if isinstance(handler, logging.FileHandler):
-            os.fsync(handler.stream.fileno()) 
+            try:
+                os.fsync(handler.stream.fileno())
+            except (OSError, ValueError):
+                pass  # Stream may be closed during rotation

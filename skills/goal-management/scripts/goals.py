@@ -23,9 +23,16 @@ def _post(path, payload):
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _get(path):
+    url = f"{_get_base()}{path}"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def check_goals(active_only=True):
     """Review current goals."""
-    result = _post("/api/goals/list", {"active_only": active_only})
+    params = f"?active_only={'true' if active_only else 'false'}"
+    result = _get(f"/api/goals{params}")
     return json.dumps(result, indent=2)
 
 
@@ -41,15 +48,32 @@ def set_goal(description, priority=3, parent_goal=""):
 
 def update_goal(description, status="in_progress", notes=""):
     """Update goal status (pending, in_progress, completed, blocked, cancelled)."""
-    result = _post("/api/goals/update", {
-        "goal_description": description,
-        "status": status,
-        "notes": notes,
-    })
+    payload = {"goal_description": description, "status": status}
+    if notes:
+        payload["completion_notes"] = notes
+    result = _post("/api/goals/update", payload)
     return json.dumps(result, indent=2)
+
+
+def mark_in_progress(description):
+    """Mark a goal as in progress."""
+    return update_goal(description, status="in_progress")
+
+
+def mark_completed(description, notes=""):
+    """Mark a goal as completed."""
+    return update_goal(description, status="completed", notes=notes)
 
 
 def suggest_next_goal():
     """Get suggestion for which goal to work on next."""
-    result = _post("/api/goals/suggest", {})
+    result = _get("/api/goals/suggestion")
+    return json.dumps(result, indent=2)
+
+
+def check_subgoals(parent_description):
+    """Check sub-goal status for a parent goal."""
+    import urllib.parse
+    encoded = urllib.parse.quote(parent_description)
+    result = _get(f"/api/goals/subgoals?parent={encoded}")
     return json.dumps(result, indent=2)

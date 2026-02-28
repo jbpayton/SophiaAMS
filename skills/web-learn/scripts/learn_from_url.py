@@ -1,10 +1,9 @@
-"""Permanent web page learning — extracted from agent_server.py learn_from_web_page_tool"""
+"""Permanent web page learning — uses Crawl4AI for JS-rendered, encoding-safe extraction"""
 
-import json
-import time
-import urllib.request
-import urllib.error
-import trafilatura
+import asyncio
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+from crawl4ai.content_filter_strategy import PruningContentFilter
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 
 def _chunk_text_by_paragraphs(text, max_chunk_size=2000):
@@ -35,6 +34,32 @@ def _chunk_text_by_paragraphs(text, max_chunk_size=2000):
     return chunks
 
 
+async def _fetch_page(url):
+    browser_config = BrowserConfig(headless=True)
+    crawl_config = CrawlerRunConfig(
+        page_timeout=30000,
+        cache_mode=CacheMode.BYPASS,
+        word_count_threshold=10,
+        excluded_tags=["nav", "footer", "script", "style", "header"],
+        markdown_generator=DefaultMarkdownGenerator(
+            content_filter=PruningContentFilter()
+        ),
+    )
+
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        result = await crawler.arun(url=url, config=crawl_config)
+
+        if not result.success:
+            return None, f"Could not fetch URL: {url} — {result.error_message}"
+
+        md = result.markdown
+        content = md.fit_markdown if md and md.fit_markdown else (md.raw_markdown if md else "")
+        if not content or not content.strip():
+            return None, f"Could not extract content from: {url}"
+
+        return content, None
+
+
 def learn_from_url(url):
     """
     Read a web page, chunk it, and permanently store knowledge in semantic memory.
@@ -48,21 +73,11 @@ def learn_from_url(url):
     from sophia_memory import memory
 
     try:
-        downloaded = trafilatura.fetch_url(url)
-        if not downloaded:
-            return f"Error: Could not fetch URL: {url}"
+        content, error = asyncio.run(_fetch_page(url))
+        if error:
+            return f"Error: {error}"
 
-        extracted = trafilatura.extract(
-            downloaded,
-            include_comments=False,
-            include_tables=True,
-            favor_precision=True,
-        )
-
-        if not extracted:
-            return f"Error: Could not extract content from: {url}"
-
-        chunks = _chunk_text_by_paragraphs(extracted, max_chunk_size=2000)
+        chunks = _chunk_text_by_paragraphs(content, max_chunk_size=2000)
         total_stored = 0
 
         for i, chunk in enumerate(chunks):

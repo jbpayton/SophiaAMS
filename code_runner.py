@@ -50,6 +50,7 @@ class CodeRunner:
         python_path: str = None,
     ):
         self.workspace = os.path.abspath(workspace)
+        self.project_root = os.path.dirname(os.path.abspath(__file__))
         self.timeout = timeout
         self.python_path = python_path or sys.executable
         os.makedirs(self.workspace, exist_ok=True)
@@ -78,15 +79,42 @@ class CodeRunner:
         # Write code to a temp file in the workspace
         script_path = os.path.join(self.workspace, "_run_tmp.py")
         try:
-            with open(script_path, "w", encoding="utf-8") as f:
-                f.write(code)
+            # Prepend a preamble that makes skill paths resolve while
+            # keeping file I/O sandboxed to the workspace directory.
+            # - SOPHIA_ROOT env var points to the project root
+            # - sys.path includes workspace (sophia_memory shim) and
+            #   project root (for any project-level imports)
+            # - The built-in open() is wrapped so that paths starting
+            #   with "skills/" resolve against SOPHIA_ROOT, while all
+            #   other relative paths resolve against workspace (cwd).
+            preamble = (
+                "import os as _os, sys as _sys, builtins as _builtins\n"
+                f"_SOPHIA_ROOT = {self.project_root!r}\n"
+                f"_os.environ['SOPHIA_ROOT'] = _SOPHIA_ROOT\n"
+                f"_os.environ['WORKSPACE_PATH'] = {self.workspace!r}\n"
+                f"_sys.path.insert(0, {self.workspace!r})\n"
+                f"_sys.path.insert(0, _SOPHIA_ROOT)\n"
+                "_original_open = _builtins.open\n"
+                "def _patched_open(file, *a, **kw):\n"
+                "    if isinstance(file, str) and file.startswith('skills/'):\n"
+                "        file = _os.path.join(_SOPHIA_ROOT, file)\n"
+                "    return _original_open(file, *a, **kw)\n"
+                "_builtins.open = _patched_open\n"
+            )
 
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(preamble + code)
+
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
             result = subprocess.run(
                 [self.python_path, script_path],
                 cwd=self.workspace,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=self.timeout,
+                env=env,
             )
 
             stdout = result.stdout[:self.MAX_OUTPUT] if len(result.stdout) > self.MAX_OUTPUT else result.stdout

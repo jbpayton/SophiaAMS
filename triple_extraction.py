@@ -169,6 +169,19 @@ def extract_triples_from_string(
     
     # Respect an environment knob for output length; default generously high
     extraction_max_tokens = int(os.getenv('EXTRACTION_MAX_TOKENS', '2048'))
+    context_window = int(os.getenv('LLM_CONTEXT_WINDOW', '0'))
+
+    # Truncate prompt if it would exceed the context window
+    if context_window > 0:
+        max_input_chars = (context_window - extraction_max_tokens - 256) * 4
+        if len(prompt) > max_input_chars > 0:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Truncating extraction prompt from {len(prompt)} to {max_input_chars} chars "
+                f"(context_window={context_window})"
+            )
+            prompt = prompt[:max_input_chars]
+
     response = client.chat.completions.create(
         model=os.getenv('EXTRACTION_MODEL', 'gemma-3-4b-it-qat'),
         messages=[{"role": "user", "content": prompt}],

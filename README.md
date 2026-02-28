@@ -114,6 +114,7 @@ Retrieval combines text similarity, topic matching, and associative expansion.
 - **Instrumental goals** — Ongoing strategic objectives that never complete
 - **Derived goals** — Auto-spawned from instrumental goals
 - **Dependencies** — Goals can block other goals until completed
+- **Goal decomposition** — Broad goals (e.g., "Learn about X") are automatically broken into 3-5 specific sub-goals. Parent goals cannot be completed until all sub-goals are done. The scoring system prioritizes sub-goals over parents so the agent works depth-first.
 
 See [docs/GOAL_SYSTEM_GUIDE.md](docs/GOAL_SYSTEM_GUIDE.md) for details.
 
@@ -146,6 +147,9 @@ python -m pytest tests/ -q
 # E2E tests (requires running LLM)
 python tests/e2e_scenarios.py
 
+# Live goal pursuit test (requires running LLM)
+python tests/test_goal_pursuit_live.py --goal "Learn about the Roman Empire" --timeout 300
+
 # Full scored report
 python tests/run_report.py --with-e2e
 ```
@@ -167,6 +171,7 @@ python tests/run_report.py --with-e2e
 | `/api/goals/create` | POST | Create a goal |
 | `/api/goals/update` | POST | Update a goal |
 | `/api/goals/suggestion` | GET | Get next suggested goal |
+| `/api/goals/subgoals` | GET | Get sub-goals of a parent goal |
 | `/api/autonomous/start` | POST | Start autonomous mode |
 | `/api/autonomous/stop` | POST | Stop autonomous mode |
 

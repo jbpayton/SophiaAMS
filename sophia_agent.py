@@ -110,7 +110,8 @@ class SophiaAgent:
             api_key=llm_config.get("api_key", os.environ.get("LLM_API_KEY")),
             model=llm_config.get("model", os.environ.get("LLM_MODEL")),
             temperature=llm_config.get("temperature", float(os.environ.get("AGENT_TEMPERATURE", "0.7"))),
-            max_tokens=llm_config.get("max_tokens", int(os.environ.get("LLM_MAX_TOKENS", "4096"))),
+            max_tokens=llm_config.get("max_tokens", int(os.environ.get("LLM_CHAT_MAX_TOKENS",
+                os.environ.get("LLM_MAX_TOKENS", "4096")))),
         )
 
         # Code runner
@@ -129,6 +130,8 @@ class SophiaAgent:
             episodic_memory=episodic_memory,
             auto_recall_limit=int(os.environ.get("AUTO_RECALL_LIMIT", "10")),
             idle_seconds=float(os.environ.get("STREAM_MONITOR_IDLE_SECONDS", "30")),
+            agent_name=os.environ.get("AGENT_NAME", "Sophia"),
+            user_name=os.environ.get("USER_NAME", "User"),
         )
 
         # Load system prompt template from persona_template.txt

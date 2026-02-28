@@ -56,6 +56,7 @@ class SetupCompleteRequest(BaseModel):
     llm_api_key: str = "not-needed"
     llm_model: str = ""
     llm_max_tokens: int = 16000
+    llm_context_window: int = 16384
 
     # Personality
     personality_preset: str = "magician"
@@ -161,6 +162,8 @@ def complete_setup(req: SetupCompleteRequest):
             f"LLM_API_KEY={req.llm_api_key}",
             f"LLM_MODEL={req.llm_model}",
             f"LLM_MAX_TOKENS={req.llm_max_tokens}",
+            f"LLM_CHAT_MAX_TOKENS={min(req.llm_max_tokens, req.llm_context_window // 2 + 2048)}",
+            f"LLM_CONTEXT_WINDOW={req.llm_context_window}",
             f"EXTRACTION_MODEL={req.llm_model}",
             f"EXTRACTION_MAX_TOKENS={req.llm_max_tokens}",
             "",

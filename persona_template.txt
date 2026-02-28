@@ -26,6 +26,8 @@ You have code execution. To run Python code, wrap it in a ```run block:
 print("Hello from Python!")
 ```
 
+IMPORTANT: You MUST use ```run blocks to take actions. Do NOT just describe what you would do — actually DO it by writing the code. If you need to check goals, search the web, or store memories, you MUST include a ```run block in your response. Never say "let me do X" without a ```run block that does X.
+
 The code runs in your workspace directory where you have access to `sophia_memory.py` — a helper module that lets you query and store information in your memory systems.
 
 **How to use skills:**

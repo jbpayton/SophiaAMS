@@ -57,34 +57,28 @@ class TestStreamMonitor(unittest.TestCase):
 
     def test_post_process_episode_creation(self):
         """post_process creates episode and saves messages."""
-        episode = MagicMock()
-        episode.episode_id = "ep1"
-        self.episodic.start_episode.return_value = episode
+        self.episodic.create_episode.return_value = "ep1"
 
         self.monitor.post_process("s1", "Hello", "Hi there!")
 
-        self.episodic.start_episode.assert_called_once_with(session_id="s1")
-        self.assertEqual(self.episodic.add_message.call_count, 2)
+        self.episodic.create_episode.assert_called_once_with(session_id="s1")
+        self.assertEqual(self.episodic.add_message_to_episode.call_count, 2)
 
     def test_post_process_message_saving(self):
         """post_process saves user and assistant messages."""
-        episode = MagicMock()
-        episode.episode_id = "ep1"
-        self.episodic.start_episode.return_value = episode
+        self.episodic.create_episode.return_value = "ep1"
 
         self.monitor.post_process("s1", "user msg", "assistant msg")
 
-        calls = self.episodic.add_message.call_args_list
-        self.assertEqual(calls[0][1]["role"], "user")
+        calls = self.episodic.add_message_to_episode.call_args_list
+        self.assertEqual(calls[0][1]["speaker"], "user")
         self.assertEqual(calls[0][1]["content"], "user msg")
-        self.assertEqual(calls[1][1]["role"], "assistant")
+        self.assertEqual(calls[1][1]["speaker"], "assistant")
         self.assertEqual(calls[1][1]["content"], "assistant msg")
 
     def test_post_process_extraction_queuing(self):
         """post_process queues non-trivial exchanges for extraction."""
-        episode = MagicMock()
-        episode.episode_id = "ep1"
-        self.episodic.start_episode.return_value = episode
+        self.episodic.create_episode.return_value = "ep1"
 
         self.monitor.post_process("s1", "Tell me about Python", "Python is a great language")
 
@@ -93,9 +87,7 @@ class TestStreamMonitor(unittest.TestCase):
 
     def test_short_message_skipping(self):
         """Very short messages are not queued for extraction."""
-        episode = MagicMock()
-        episode.episode_id = "ep1"
-        self.episodic.start_episode.return_value = episode
+        self.episodic.create_episode.return_value = "ep1"
 
         self.monitor.post_process("s1", "hi", "hey")
 
@@ -104,9 +96,7 @@ class TestStreamMonitor(unittest.TestCase):
 
     def test_episode_rotation(self):
         """Episode is rotated after threshold messages."""
-        episode = MagicMock()
-        episode.episode_id = "ep1"
-        self.episodic.start_episode.return_value = episode
+        self.episodic.create_episode.return_value = "ep1"
 
         # threshold is 4, each post_process adds 2 messages
         self.monitor.post_process("s1", "msg1 long enough", "resp1 long enough")
@@ -119,9 +109,7 @@ class TestStreamMonitor(unittest.TestCase):
 
     def test_flush_processing(self):
         """flush() processes pending extractions immediately."""
-        episode = MagicMock()
-        episode.episode_id = "ep1"
-        self.episodic.start_episode.return_value = episode
+        self.episodic.create_episode.return_value = "ep1"
 
         self.monitor.post_process("s1", "Important conversation content", "Yes, very important response here")
         self.monitor.flush("s1")
@@ -132,6 +120,31 @@ class TestStreamMonitor(unittest.TestCase):
     def test_flush_nonexistent_session(self):
         """flush() on unknown session is a no-op."""
         self.monitor.flush("nonexistent")  # Should not raise
+
+    def test_consolidation_uses_speaker_tags(self):
+        """Ingested text uses SPEAKER: format for pronoun resolution."""
+        self.episodic.create_episode.return_value = "ep1"
+
+        monitor = StreamMonitor(
+            semantic_memory=self.semantic,
+            episodic_memory=self.episodic,
+            idle_seconds=0.1,
+            agent_name="Sophia",
+            user_name="Joey",
+        )
+
+        monitor.post_process("s1", "I love Python", "That's great!")
+        monitor.flush("s1")
+
+        call_args = self.semantic.ingest_text.call_args
+        text = call_args[1]["text"] if "text" in call_args[1] else call_args[0][0]
+        self.assertIn("SPEAKER:Joey|I love Python", text)
+        self.assertIn("SPEAKER:Sophia|That's great!", text)
+        self.assertNotIn("User:", text)
+
+        # Cancel timers
+        for timer in monitor._timers.values():
+            timer.cancel()
 
 
 if __name__ == "__main__":

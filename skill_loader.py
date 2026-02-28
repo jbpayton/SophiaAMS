@@ -105,10 +105,13 @@ class SkillLoader:
             i = end + 3
         return examples
 
-    def descriptions(self) -> str:
+    def descriptions(self, max_examples: int = 3) -> str:
         """
         Format all skills as a string for inclusion in the system prompt.
-        Includes the first usage example so the LLM knows the correct calling pattern.
+        Includes usage examples so the LLM knows the correct calling patterns.
+
+        Args:
+            max_examples: Maximum number of examples to show per skill.
         """
         if not self._skills:
             return "No skills available."
@@ -117,12 +120,16 @@ class SkillLoader:
         for skill in sorted(self._skills.values(), key=lambda s: s.name):
             lines.append(f"  - {skill.name}: {skill.description}")
             examples = self._extract_examples(skill.path)
-            if examples:
-                lines.append(f"    Example: ```run")
-                lines.append(f"    {examples[0]}")
+            for ex in examples[:max_examples]:
+                lines.append(f"    ```run")
+                lines.append(f"    {ex}")
                 lines.append(f"    ```")
-            skill_md = os.path.join(skill.path, "SKILL.md")
-            lines.append(f"    Full docs: {skill_md}")
+            # Use relative path so agent code can actually open it
+            rel_path = os.path.relpath(
+                os.path.join(skill.path, "SKILL.md"),
+                os.getcwd(),
+            ).replace("\\", "/")
+            lines.append(f"    Full docs: {rel_path}")
         return "\n".join(lines)
 
     def get_skill(self, name: str) -> Optional[Skill]:

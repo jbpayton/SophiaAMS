@@ -22,6 +22,12 @@ _RUN_BLOCK_RE = re.compile(r"```run\s*\n(.*?)```", re.DOTALL)
 # Pattern to extract <think>...</think> blocks before LLMClient strips them
 _THINK_RE = re.compile(r'<think>(.*?)</think>', re.DOTALL)
 
+# Plaintext thinking detection (Qwen3.5 style)
+_PLAINTEXT_THINK_HEADER_RE = re.compile(
+    r'^(?:Thinking Process|Internal Reasoning|Reasoning|Thought Process)\s*:\s*\n',
+    re.MULTILINE
+)
+
 
 class AgentLoop:
     """
@@ -114,11 +120,18 @@ class AgentLoop:
 
             messages = self._build_messages(context)
 
+            # Estimate input token count and log it
+            input_chars = sum(len(m.get("content", "")) for m in messages)
+            input_tokens_est = input_chars // 4  # rough estimate
+            logger.info(f"Round {round_num+1}: sending {len(messages)} messages, ~{input_chars} chars (~{input_tokens_est} tokens est)")
+
             self._emit(on_event, "thinking", {"round": round_num + 1})
 
             try:
-                # Temporarily disable think stripping so we can capture raw reasoning
-                if on_event and hasattr(self.llm, 'strip_thinking'):
+                # Always get raw response (with think tokens) so we can
+                # extract ```run blocks that models sometimes put inside
+                # <think> tags. We strip think tokens ourselves below.
+                if hasattr(self.llm, 'strip_thinking'):
                     original_strip = self.llm.strip_thinking
                     self.llm.strip_thinking = False
                     response = self.llm.chat(messages)
@@ -131,28 +144,95 @@ class AgentLoop:
                 self._emit(on_event, "error", {"message": str(e)})
                 break
 
-            # Extract and emit reasoning blocks before stripping
+            # Log raw response for debugging
+            raw_len = len(response)
+            has_think = '<think>' in response or '</think>' in response
+            has_plaintext_think = bool(_PLAINTEXT_THINK_HEADER_RE.search(response))
+            has_run = '```run' in response
+            finish_reason = getattr(self.llm, '_last_finish_reason', 'unknown')
+            logger.info(
+                f"Round {round_num+1}: raw response {raw_len} chars, "
+                f"has_think={has_think}, has_plaintext_think={has_plaintext_think}, "
+                f"has_run={has_run}, finish_reason={finish_reason}"
+            )
+            if raw_len < 500:
+                logger.info(f"Round {round_num+1} full response: {response!r}")
+            else:
+                logger.info(f"Round {round_num+1} response preview: {response[:200]!r} ... {response[-200:]!r}")
+
+            # Extract run blocks BEFORE stripping think tokens, because
+            # some models put ```run blocks inside <think> tags.
+            run_blocks = self._extract_run_blocks(response)
+            logger.info(f"Round {round_num+1}: found {len(run_blocks)} run blocks")
+
+            # Emit reasoning blocks if streaming
             if on_event:
                 think_blocks = _THINK_RE.findall(response)
                 for think_content in think_blocks:
                     think_text = think_content.strip()
                     if think_text:
                         self._emit(on_event, "reasoning", {"text": think_text})
-                # Now strip think tokens from response
-                response = LLMClient._strip_think_tokens(response)
+
+                # Also emit plaintext thinking as reasoning events
+                if has_plaintext_think:
+                    match = _PLAINTEXT_THINK_HEADER_RE.search(response)
+                    if match:
+                        think_start = match.start()
+                        think_text = response[think_start:]
+                        # Try to find where thinking ends (before code fence or uppercase line after blank)
+                        end_match = re.search(r'\n(?:```|[A-Z])', think_text[match.end() - think_start:])
+                        if end_match:
+                            think_text = think_text[:match.end() - think_start + end_match.start()]
+                        self._emit(on_event, "reasoning", {"text": think_text.strip()})
+
+            # Strip think tokens from the response text
+            response = LLMClient._strip_think_tokens(response)
+            stripped_len = len(response)
+            logger.info(f"Round {round_num+1}: after strip_think {stripped_len} chars (removed {raw_len - stripped_len})")
+            if stripped_len < 300 and stripped_len > 0:
+                logger.info(f"Round {round_num+1} stripped response: {response!r}")
+
+            # Detect truncated response: model spent all tokens on thinking
+            if not response.strip() and not run_blocks:
+                logger.warning(f"Round {round_num+1}: empty after stripping think tokens (finish_reason={finish_reason})")
+                # Retry with an explicit "no thinking" nudge
+                messages.append({
+                    "role": "assistant",
+                    "content": "(I was thinking about this but ran out of space. Let me respond directly.)"
+                })
+                messages.append({
+                    "role": "user",
+                    "content": "Please respond directly without extensive internal reasoning. What were you going to say?"
+                })
+                try:
+                    retry_response = self.llm.chat(messages) if not hasattr(self.llm, 'strip_thinking') else self._retry_direct(messages)
+                    retry_response = LLMClient._strip_think_tokens(retry_response)
+                    if retry_response.strip():
+                        logger.info(f"Round {round_num+1}: retry succeeded with {len(retry_response)} chars")
+                        response = retry_response
+                    else:
+                        logger.warning(f"Round {round_num+1}: retry also empty, using fallback")
+                        response = "I was thinking about your request but couldn't formulate a complete response. Could you try rephrasing or simplifying your question?"
+                except Exception as e:
+                    logger.error(f"Round {round_num+1}: retry failed: {e}")
+                    response = "I was thinking about your request but couldn't formulate a complete response. Could you try rephrasing or simplifying your question?"
 
             # Check cancellation between rounds
             if self._cancel.is_set():
                 final_response = "[Paused to handle your message — I'll continue this later]"
                 break
 
-            # Check for run blocks
-            run_blocks = self._extract_run_blocks(response)
-
             if not run_blocks:
                 # No code to execute — this is the final answer
                 final_response = response
                 break
+
+            # Cap run blocks per round to prevent the model from speed-running
+            # entire workflows in a single response without seeing real results.
+            max_blocks = 2
+            if len(run_blocks) > max_blocks:
+                logger.info(f"Round {round_num+1}: capping {len(run_blocks)} run blocks to {max_blocks}")
+                run_blocks = run_blocks[:max_blocks]
 
             # Execute code blocks and collect results
             execution_results = []
@@ -169,10 +249,18 @@ class AgentLoop:
                     execution_results.append(f"[Execution {i + 1}]\nError: {error_text}")
                     self._emit(on_event, "tool_error", {"error": error_text})
 
-            # Add assistant response + execution feedback to conversation
-            self.conversation_memory.add_message("assistant", response)
+            # Add assistant response + execution feedback to conversation.
+            # Include the code blocks in the assistant message so the model
+            # knows what was executed (think-stripped response may be just text).
+            assistant_msg = response
+            if run_blocks and '```run' not in response:
+                # The visible response lost the code blocks during think-stripping;
+                # re-attach them so the model has context for what was executed.
+                code_section = "\n".join(f"```run\n{code}\n```" for code in run_blocks)
+                assistant_msg = f"{response}\n{code_section}" if response.strip() else code_section
+            self.conversation_memory.add_message("assistant", assistant_msg)
             feedback = "\n\n".join(execution_results)
-            self.conversation_memory.add_message("system", f"Code execution results:\n{feedback}")
+            self.conversation_memory.add_message("user", f"[Code execution results]\n{feedback}\n\nNow respond to the user based on these results. Use ```run blocks if you need to take more actions.")
             context = ""  # Don't re-inject recall context in subsequent rounds
         else:
             # Max rounds reached — use last response
@@ -192,6 +280,15 @@ class AgentLoop:
                 logger.error(f"Post-process hook error: {e}")
 
         return final_response
+
+    def _retry_direct(self, messages: list) -> str:
+        """Retry LLM call with strip_thinking disabled so we get raw output."""
+        original_strip = self.llm.strip_thinking
+        self.llm.strip_thinking = False
+        try:
+            return self.llm.chat(messages)
+        finally:
+            self.llm.strip_thinking = original_strip
 
     def _extract_run_blocks(self, text: str) -> List[str]:
         """Extract code from ```run ... ``` blocks."""
@@ -221,20 +318,22 @@ class AgentLoop:
     def _build_messages(self, context: str = "") -> List[Dict]:
         """
         Build the full message list for the LLM:
-        system prompt (with live time + skills) + recall context + conversation.
+        system prompt (with live time + skills + recall context) + conversation.
+
+        Note: Some models (e.g. Qwen3.5) reject multiple system messages,
+        so we merge the recall context into the main system prompt.
         """
         messages = []
 
         # System prompt — rebuilt every turn for fresh time + skills
-        messages.append({"role": "system", "content": self._build_system_prompt()})
+        system_content = self._build_system_prompt()
 
-        # Recall context — separate system message so the LLM can distinguish
-        # stable instructions from per-turn memory context.
+        # Merge recall context into the system prompt (some model templates
+        # reject multiple system messages)
         if context:
-            messages.append({
-                "role": "system",
-                "content": f"Automatic Memory Recall:\n{context}",
-            })
+            system_content += f"\n\n--- Automatic Memory Recall ---\n{context}"
+
+        messages.append({"role": "system", "content": system_content})
 
         # Conversation history
         messages.extend(self.conversation_memory.get_messages())

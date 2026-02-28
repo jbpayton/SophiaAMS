@@ -24,10 +24,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+logger = logging.getLogger(__name__)
 SETUP_SENTINEL = os.path.join(ROOT_DIR, ".setup_complete")
 FRONTEND_DIR = os.path.join(ROOT_DIR, "sophia-web")
 
@@ -126,6 +124,7 @@ async def build_and_run() -> None:
         sophia_cancel_session=sophia.cancel_session,
         memory_system=memory_system,
         rate_limit_per_hour=agent_cfg.get("rate_limit_per_hour", 120),
+        skill_env_config=skill_env,
     )
 
     # ------------------------------------------------------------------
@@ -348,6 +347,9 @@ def run_setup_mode():
 # ---------------------------------------------------------------------------
 
 def main():
+    from utils import setup_logging
+    setup_logging(log_file=os.path.join(ROOT_DIR, "logs", "sophia.log"))
+
     if not os.path.exists(SETUP_SENTINEL):
         logger.info("No .setup_complete found — entering setup mode")
         run_setup_mode()

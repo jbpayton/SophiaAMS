@@ -34,7 +34,7 @@ if PROJECT_ROOT not in sys.path:
 from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
-from llm_client import LLMClient, LLMError
+from llm_client import LLMClient, LLMError, strip_think_tokens
 from code_runner import CodeRunner, RunResult
 from conversation_memory import ConversationMemory
 from skill_loader import SkillLoader
@@ -971,8 +971,8 @@ class E2ERunner:
 
                 # Robust JSON array extraction (handles think tokens, fences, prose)
                 import re as _re
-                # Strip think blocks first
-                cleaned = _re.sub(r'<think>.*?</think>', '', raw, flags=_re.DOTALL).strip()
+                # Strip think blocks first (handles both closed and unclosed)
+                cleaned = strip_think_tokens(raw)
                 # Try markdown fence
                 fence = _re.search(r'```(?:json)?\s*\n?(.*?)```', cleaned, _re.DOTALL)
                 if fence:
@@ -1012,15 +1012,64 @@ class E2ERunner:
                         all_results.append(result)
 
             except Exception as e:
-                # If the LLM call or parsing fails, mark entire batch ambiguous
-                for item in batch:
-                    all_results.append(HallucinationResult(
-                        triple=(item["subject"], item["predicate"], item["object"]),
-                        source_text=item["source_text"],
-                        verdict="ambiguous",
-                        reasoning=f"Judge call failed: {e}",
-                        scenario_num=item["scenario_num"],
-                    ))
+                # Retry once with a simplified prompt before giving up
+                retry_ok = False
+                try:
+                    retry_prompt = (
+                        "Respond with ONLY a JSON array. For each triple, give "
+                        '{"index": N, "verdict": "grounded|ungrounded|ambiguous", "reasoning": "..."}.\n\n'
+                        + "\n".join(entries)
+                    )
+                    raw2 = self.llm.chat(
+                        [{"role": "user", "content": retry_prompt}],
+                        temperature=0.0, max_tokens=4096,
+                    )
+                    cleaned2 = strip_think_tokens(raw2)
+                    fence2 = _re.search(r'```(?:json)?\s*\n?(.*?)```', cleaned2, _re.DOTALL)
+                    if fence2:
+                        cleaned2 = fence2.group(1).strip()
+                    for start_i in range(len(cleaned2)):
+                        if cleaned2[start_i] == '[':
+                            depth = 0
+                            for end_i in range(start_i, len(cleaned2)):
+                                if cleaned2[end_i] == '[':
+                                    depth += 1
+                                elif cleaned2[end_i] == ']':
+                                    depth -= 1
+                                    if depth == 0:
+                                        try:
+                                            judgments = json.loads(cleaned2[start_i:end_i + 1])
+                                        except json.JSONDecodeError:
+                                            pass
+                                        break
+                            if judgments is not None:
+                                break
+                    if judgments is not None:
+                        for j in judgments:
+                            idx = j.get("index", 0) - 1
+                            if 0 <= idx < len(batch):
+                                item = batch[idx]
+                                all_results.append(HallucinationResult(
+                                    triple=(item["subject"], item["predicate"], item["object"]),
+                                    source_text=item["source_text"],
+                                    verdict=j.get("verdict", "ambiguous").lower(),
+                                    reasoning=j.get("reasoning", ""),
+                                    scenario_num=item["scenario_num"],
+                                ))
+                        retry_ok = True
+                except Exception:
+                    pass
+
+                if not retry_ok:
+                    # Mark entire batch ambiguous
+                    for item in batch:
+                        all_results.append(HallucinationResult(
+                            triple=(item["subject"], item["predicate"], item["object"]),
+                            source_text=item["source_text"],
+                            verdict="ambiguous",
+                            reasoning=f"Judge call failed: {e}",
+                            scenario_num=item["scenario_num"],
+                        ))
 
         # Attach results to their respective scenario logs
         by_scenario: Dict[int, List[HallucinationResult]] = {}
